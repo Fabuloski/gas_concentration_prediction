@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.11.8"
+__generated_with = "0.10.15"
 app = marimo.App()
 
 
@@ -23,8 +23,8 @@ def _():
 def _(pd):
     expts_we_hv = pd.DataFrame(
         {
-            'H2S [ppm]': [5, 40, 0, 40, 10, 5, 0, 0],
-            'SO2 [ppm]': [5, 40, 40, 0, 0, 0, 10, 5]
+            'H2S [ppm]': [5, 40, 0, 40, 10, 5, 0, 0, 4, 9, 13, 18, 22, 27, 31, 36, 0, 20],
+            'SO2 [ppm]': [5, 40, 40, 0, 0, 0, 10, 5, 36, 13, 27, 4, 18, 31, 9, 22, 20, 0]
         }
     )
     return (expts_we_hv,)
@@ -146,15 +146,15 @@ def _(np):
                     design.loc[j, :] - sobol_samples.loc[i, :])
                      for j in range(design.shape[0])]
             )
-    
+
         new_candidate = np.argmax(dist_to_data)
         return new_candidate
     return (get_candidate_max_min_distance_to_data,)
 
 
 @app.cell
-def _(design, get_candidate_max_min_distance_to_data, sobol_samples):
-    new_candidate = get_candidate_max_min_distance_to_data(sobol_samples, design)
+def _(expts_we_hv, get_candidate_max_min_distance_to_data, sobol_samples):
+    new_candidate = get_candidate_max_min_distance_to_data(sobol_samples, expts_we_hv)
     return (new_candidate,)
 
 
@@ -189,19 +189,25 @@ def _(sobol_samples):
 
 
 @app.cell
-def _(sobol_samples):
-    sobol_samples.loc[168, :]
+def _(expts_we_hv):
+    expts_we_hv
     return
 
 
 @app.cell
-def _(design, expand_design, sobol_samples):
-    new_design = expand_design(design, 10, sobol_samples)
+def _(expand_design, expts_we_hv, sobol_samples):
+    new_design = expand_design(expts_we_hv, 10, sobol_samples)
     return (new_design,)
 
 
 @app.cell
-def _(design, new_design, num_samples, plt, ppm_max):
+def _(new_design):
+    new_design
+    return
+
+
+@app.cell
+def _(expts_we_hv, new_design, plt, ppm_max):
     plt.figure()
 
     plt.xlabel("H$_2$S [ppm]")
@@ -211,12 +217,12 @@ def _(design, new_design, num_samples, plt, ppm_max):
         linestyle="--", color="gray", label="design space", zorder=0
     )
 
-    plt.scatter(design["H2S [ppm]"], design["SO2 [ppm]"], 
+    plt.scatter(expts_we_hv["H2S [ppm]"], expts_we_hv["SO2 [ppm]"], 
         label="current", edgecolor="C1", linewidth=3
     )
     plt.scatter(
-        new_design.loc[num_samples:, "H2S [ppm]"], 
-        new_design.loc[num_samples:, "SO2 [ppm]"], 
+        new_design.loc[len(expts_we_hv):, "H2S [ppm]"], 
+        new_design.loc[len(expts_we_hv):, "SO2 [ppm]"], 
         label="new", edgecolor="C2", facecolor='None', linewidth=3
     )
 
@@ -225,6 +231,12 @@ def _(design, new_design, num_samples, plt, ppm_max):
     plt.gca().legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.gca()
+    return
+
+
+@app.cell
+def _(expts_we_hv, new_design):
+    new_design.loc[len(expts_we_hv): ]
     return
 
 
