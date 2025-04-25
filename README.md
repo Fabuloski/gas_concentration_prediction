@@ -1,8 +1,8 @@
 # Metal−Organic Framework-Based Chemiresistive Array for the Detection and Differentiation of Toxic Gases
-:rocket: this repo contains data and code to reproduce the results for:
+:rocket: This repo contains data and code to reproduce the results for:
 > Georganna Benedetto, Patrick Damacet, Elissa O. Shehayeb, Gbenga Fabusola, Cory M. Simon, and Katherine A. Mirica, "Metal−Organic Framework-Based Chemiresistive Array for the Detection and Differentiation of Toxic Gases"
 
-we describe the sequence of steps we took to make our paper reproducible. the output of each step is saved as a file, so you can start at any step.
+We describe the sequence of steps we took to make our paper reproducible. The output of each step is saved as a file, you can start at any step.
 
 ## required software
 required software/packages:
@@ -10,11 +10,12 @@ required software/packages:
 * [Marimo Notebook](https://docs.marimo.io/)
 
 ## the sensor array response dataset
-we obtained the dataset of the response of sensors to mixture from experimental collaboration from Dartmouth College led by Dr. Katherine A. Mirica.
+We obtained the dataset of sensors' responses to gas mixtures (H2S + SO2) from an experimental collaboration at Dartmouth College led by Dr. Katherine A. Mirica.
 
 ## analysis
-we run the PCA, supervised learning, sensor importance and uncertainity quantification on the sensor array dataset using `sensor_response.py`.
+We run the PCA, supervised learning, sensor importance, and uncertainty quantification on the sensor array dataset using `sensor_response.py`.
 
 ## overview of directories
 - `H2S+SO2-data`: contains Microsoft Excel raw response files of sensors to different mixture concentrations [ppm]
-- `responses`: contain visualization of the response of sensors to every single experiments (ppm of gas mixture (H2S + SO2)) with the features extracted
+- `responses`: contains visualization of the response of sensors to every single experiment (ppm of gas mixture (H2S + SO2)) with the features extracted
+-  `doe (Design of Experiment)`: contains the code `design_of_mixture_expts.py` used to design the experiment space
