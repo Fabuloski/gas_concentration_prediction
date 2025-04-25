@@ -655,7 +655,7 @@ def _(
 
             ax.grid(axis='x', color='grey')
             ax.set_yticks(ticks=[40, 20, 0])
-        plt.savefig("heatmap.png", bbox_inches='tight', pad_inches=0.5)
+        plt.savefig("heatmap.pdf", bbox_inches='tight', pad_inches=0.5)
         plt.show()
     return (plot_heatmap,)
 
@@ -734,6 +734,7 @@ def _(Line2D, UQ_region, combo_df, new_combo_df, plt, target_to_color):
     ax.set_ylim(0, 40)
     ax.set_aspect('equal', "box")
     ax.legend(handles=legend_elements)
+    plt.savefig("experiment_space.pdf")
     plt.show();
     return alpha, ax, facecolors, fig, legend_elements
 
@@ -759,24 +760,26 @@ def _(PCA, new_combo_df, pd, response_array):
 
 
 @app.cell
-def _(Line2D, np, plt, target_to_color, target_to_shape):
+def _(Line2D, plt, target_to_color, target_to_shape):
     def plot_PCA(pcs_and_exps, z1, z2, savename="PCA.pdf"):
         pc1 = pcs_and_exps['PC1']
         pc2 = pcs_and_exps['PC2']
         mixture_types = pcs_and_exps['target']
-
+        unique_mixture = (("--", r"H$_2$S$^-$, SO$_2$$^-$"), ("+-", r"H$_2$S$^+$, SO$_2$$^-$"), 
+                          ("-+", r"H$_2$S$^-$, SO$_2$$^+$"), ("++", r"H$_2$S$^+$, SO$_2$$^+$"))
+        
         fig, ax = plt.subplots()
         ax.axhline(y=0, color='grey', zorder=0)
         ax.axvline(x=0, color='grey', zorder=0)
 
         # create the bubble plot and legend handles
         mixture_legend_elements = []
-        for mixture_type in np.unique(mixture_types):
+        for mixture_type, label in unique_mixture:
             mixture_mask = (mixture_types == mixture_type)
             scatter = ax.scatter(pc1[mixture_mask], pc2[mixture_mask], s=80,
                                 edgecolors=target_to_color[mixture_type], marker=target_to_shape[mixture_type], 
                                  linewidths=1.5, facecolors='none')
-            mixture_legend_elements.append(Line2D([0], [0], marker=target_to_shape[mixture_type], color='w', label=mixture_type,
+            mixture_legend_elements.append(Line2D([0], [0], marker=target_to_shape[mixture_type], color='w', label=label,
                                             markeredgecolor=target_to_color[mixture_type], markerfacecolor='none', markersize=10))
 
         # set x and y axis labels and limits
@@ -851,12 +854,18 @@ def _(confusion_matrix, metric):
 @app.cell
 def _(cm, plt, sns):
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=['- -', '+ -', '- +', '+ +'],
-                yticklabels=['- -', '+ -', '- +', '+ +'])
+                xticklabels=[r"H$_2$S$^-$, SO$_2$$^-$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^+$"],
+                yticklabels=[r"H$_2$S$^-$, SO$_2$$^-$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^+$"],
+                cbar_kws={"label":"# experiments"})
+
+    # plt.xticks(rotation=90)
+    plt.yticks(rotation=0)
+
     plt.xlabel('Predicted')
     plt.ylabel('True')
+
     plt.title('mixture class classification')
-    plt.savefig("cm.png")
+    plt.savefig("cm.pdf")
     plt.show()
     return
 
@@ -874,12 +883,13 @@ def _(MOFs, features_importance, np, pd, plt, sns):
         jump = len(features_importance) // len(MOFs)
         for (j, MOF) in enumerate(MOFs): 
             MOF_importance[j] = sum(features_importance[j * jump : j * jump + jump])
-        MOF_importance = pd.DataFrame({"sensor importance" : MOF_importance, "MOF" : MOFs})
-        MOF_importance.sort_values(by="sensor importance", inplace=True, ascending=False)
+        MOF_importance = pd.DataFrame({"sensor importance score" : MOF_importance, "MOF" : MOFs})
+        MOF_importance.sort_values(by="sensor importance score", inplace=True, ascending=False)
 
         fig, ax = plt.subplots(1, 1)
-        sns.barplot(MOF_importance, x="MOF", y="sensor importance")
+        sns.barplot(MOF_importance, x="MOF", y="sensor importance score", edgecolor="black", facecolor="white")
         ax.set_ylim(0, 1)
+        plt.savefig("sensor_importance.pdf")
         return plt.show()
     return (plot_MOF_importance,)
 
