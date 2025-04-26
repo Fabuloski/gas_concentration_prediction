@@ -871,6 +871,7 @@ def _(cm, plt, sns):
     plt.ylabel('True')
 
     plt.title('mixture class classification')
+    plt.tight_layout()
     plt.savefig("cm.pdf")
     plt.show()
     return
