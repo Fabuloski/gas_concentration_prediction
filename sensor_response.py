@@ -852,10 +852,16 @@ def _(confusion_matrix, metric):
 
 
 @app.cell
+def _(new_combo_df, np):
+    np.unique(new_combo_df["target"], return_counts=True)
+    return
+
+
+@app.cell
 def _(cm, plt, sns):
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=[r"H$_2$S$^-$, SO$_2$$^-$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^+$"],
-                yticklabels=[r"H$_2$S$^-$, SO$_2$$^-$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^+$"],
+                xticklabels=[r"H$_2$S$^+$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^-$, SO$_2$$^-$"],
+                yticklabels=[r"H$_2$S$^+$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^-$, SO$_2$$^-$"],
                 cbar_kws={"label":"# experiments"})
 
     # plt.xticks(rotation=90)
