@@ -1,6 +1,8 @@
+
+
 import marimo
 
-__generated_with = "0.10.15"
+__generated_with = "0.13.2"
 app = marimo.App(width="medium")
 
 
@@ -41,14 +43,17 @@ def _():
         auc,
         confusion_matrix,
         make_axes_locatable,
-        mean_squared_error,
         np,
-        path_effects,
         pd,
         plt,
-        r2_score,
         sns,
     )
+
+
+@app.cell
+def _(plt):
+    plt.rcParams.update({"font.size": 18})
+    return
 
 
 @app.cell
@@ -223,9 +228,9 @@ def _(mo):
 
 
 @app.cell
-def _(auc, linear_regression, np, plt, read_data):
+def _(MOF, auc, linear_regression, np, plt, ppm, read_data, replicate_id):
     class SensorResponse:
-        def __init__(self, MOF, ppm, replicate_id, time_adjust=0):
+        def __init__(self, data, time_adjust=0):
             self.MOF = MOF
             self.ppm = ppm
             self.replicate_id = replicate_id
@@ -361,41 +366,30 @@ def _(mo):
 @app.cell
 def _(MOFs, SensorResponse, ppms, read_data_from_file):
     # list for data, will append cof, gas, carrier, and features of each sensor_response
-    data = []
-    for MOF in MOFs:
-        for ppm in ppms:
-            for rep_id in range(8):
-                if read_data_from_file:
-                    continue
-                try:
-                    sensor_response = SensorResponse(MOF, ppm, rep_id)
-                    sensor_response.compute_features()
-                    sensor_response.viz(save=True)
-                    data.append([MOF, ppm, rep_id, sensor_response.slope_info['slope'],
-                                sensor_response.saturation, sensor_response.auc]) 
-
-                except (AttributeError, Exception):
-                    pass
-    return MOF, data, ppm, rep_id, sensor_response
+    raw_data = []
+    if not read_data_from_file:
+        for MOF in MOFs:
+            for ppm in ppms:
+                for rep_id in range(8):
+                    try:
+                        sensor_response = SensorResponse(MOF, ppm, rep_id)
+                        sensor_response.compute_features()
+                        sensor_response.viz(save=True)
+                        raw_data.append([MOF, ppm, rep_id, sensor_response.slope_info['slope'],
+                                    sensor_response.saturation, sensor_response.auc]) 
+                    except (AttributeError, Exception):
+                        pass
+    return MOF, ppm, raw_data
 
 
 @app.cell
-def _(data, pd, read_data_from_file):
+def _(pd, raw_data, read_data_from_file):
     # Put list of data into dataframe
-    if read_data_from_file:
-        data_df = pd.read_csv("responses.csv")
-        data_df.drop(columns=['Unnamed: 0'], inplace=True) # remove index column, artifact of reading in
-    else:
-        data_df = pd.DataFrame(data, columns=['MOF', 'ppm', 'rep_id', 'slope', 'saturation', 'auc'])
-        data_df.to_csv("responses.csv")
-    data_df
-    return (data_df,)
+    if not read_data_from_file:
+        prelim_data = pd.DataFrame(raw_data, columns=['MOF', 'ppm', 'rep_id', 'slope', 'saturation', 'auc'])
 
-
-@app.cell
-def _(data_df):
-    data_df.head()
-    return
+        prelim_data # b/c we'll make adjustements later.
+    return (prelim_data,)
 
 
 @app.cell(hide_code=True)
@@ -407,67 +401,68 @@ def _(mo):
 @app.cell
 def _(SensorResponse):
     # input data, experiment, and slope partition adjustment, output: dataframe and viz with adjusted slope feature
-    def make_adjustment(data_df, MOF, ppm, rep_ids, n_partitions_slope_adj=15, n_partitions_saturation_adj=100, time_adjust=0):
+    def make_adjustment(
+        prelim_data, MOF, ppm, rep_ids, 
+        n_partitions_slope_adj=15, n_partitions_saturation_adj=100, time_adjust=0
+    ):
         for rep_id in rep_ids:
             try:
                 sensor_response = SensorResponse(MOF, ppm, rep_id, time_adjust=time_adjust)
                 sensor_response.compute_features(n_partitions_slope=n_partitions_slope_adj,
                                                  n_partitions_saturation=n_partitions_saturation_adj)
                 sensor_response.viz(save=True)
-                data_df.loc[(data_df['MOF']==MOF)
-                                    & (data_df['ppm']==ppm)
-                                    & (data_df['rep_id']==rep_id), 'slope'] = sensor_response.slope_info['slope']
-                data_df.loc[(data_df['MOF']==MOF)
-                                    & (data_df['ppm']==ppm)
-                                    & (data_df['rep_id']==rep_id), 'auc'] = sensor_response.auc
-                data_df.loc[(data_df['MOF']==MOF)
-                                    & (data_df['ppm']==ppm)
-                                    & (data_df['rep_id']==rep_id), 'saturation'] = sensor_response.saturation
+                prelim_data.loc[(prelim_data['MOF']==MOF)
+                                    & (prelim_data['ppm']==ppm)
+                                    & (prelim_data['rep_id']==rep_id), 'slope'] = sensor_response.slope_info['slope']
+                prelim_data.loc[(prelim_data['MOF']==MOF)
+                                    & (prelim_data['ppm']==ppm)
+                                    & (prelim_data['rep_id']==rep_id), 'auc'] = sensor_response.auc
+                prelim_data.loc[(prelim_data['MOF']==MOF)
+                                    & (prelim_data['ppm']==ppm)
+                                    & (prelim_data['rep_id']==rep_id), 'saturation'] = sensor_response.saturation
             except:
                 pass
-        return data_df
+        return prelim_data
     return (make_adjustment,)
 
 
 @app.cell
-def _(data_df, make_adjustment):
-    make_adjustment(data_df, MOF='Zn-HHTP', ppm="9+13", rep_ids=[0, 3], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Zn-HHTP', ppm="13+27", rep_ids=[1], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="0+5", rep_ids=[2], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Ni-HHTP', ppm="5+0", rep_ids=[1], n_partitions_slope_adj=3)
-    return
+def _(make_adjustment, pd, prelim_data, read_data_from_file):
+    # do all of these in one cell.
+    if not read_data_from_file:
+        data = prelim_data.copy()
+        make_adjustment(data, MOF='Zn-HHTP', ppm="9+13", rep_ids=[0, 3], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Zn-HHTP', ppm="13+27", rep_ids=[1], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="0+5", rep_ids=[2], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Ni-HHTP', ppm="5+0", rep_ids=[1], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="9+13", rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="13+27", rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="18+4", rep_ids=[0, 1, 2, 3, 4], time_adjust=50)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="27+31", rep_ids=[0, 1, 2, 3, 4], time_adjust=50)
+        make_adjustment(data, MOF='Zn-HHTP', ppm="5+0", rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Zn-HHTP', ppm="10+0", rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Zn-HHTP', ppm="0+5", rep_ids=[0, 1, 2, 3], time_adjust=150)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="0+10", rep_ids=[3], time_adjust=200)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="0+5", rep_ids=[3], n_partitions_slope_adj=5)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="10+0", rep_ids=[0, 1, 2], time_adjust=200)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="20+0", rep_ids=[0, 1, 2, 3], time_adjust=200)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="22+18", rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="31+9", rep_ids=[0, 1, 2, 3, 4],  time_adjust=100)
+        make_adjustment(data, MOF='Cu-HHTP', ppm="36+22", rep_ids=[0, 1, 2, 3, 4],  time_adjust=50)
+        make_adjustment(data, MOF='Ni-HHTP', ppm="5+5", rep_ids=[0, 1, 2, 3],  time_adjust=100)
+        make_adjustment(data, MOF='Ni-HHTP', ppm="31+9", rep_ids=[0, 1, 2, 3, 4], time_adjust=50)
+
+        # save
+        data.to_csv("mixture_responses.csv")
+    else:
+        data = pd.read_csv("mixture_responses.csv") # this is adjusted.
+        data.drop(columns=['Unnamed: 0'], inplace=True) # remove index column, artifact of reading in
+    return (data,)
 
 
 @app.cell
-def _(data_df, make_adjustment):
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="9+13", rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="13+27", rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="18+4", rep_ids=[0, 1, 2, 3, 4], time_adjust=50)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="27+31", rep_ids=[0, 1, 2, 3, 4], time_adjust=50)
-    make_adjustment(data_df, MOF='Zn-HHTP', ppm="5+0", rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Zn-HHTP', ppm="10+0", rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Zn-HHTP', ppm="0+5", rep_ids=[0, 1, 2, 3], time_adjust=150)
-    return
-
-
-@app.cell
-def _(data_df, make_adjustment):
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="0+10", rep_ids=[3], time_adjust=200)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="0+5", rep_ids=[3], n_partitions_slope_adj=5)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="10+0", rep_ids=[0, 1, 2], time_adjust=200)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="20+0", rep_ids=[0, 1, 2, 3], time_adjust=200)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="22+18", rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="31+9", rep_ids=[0, 1, 2, 3, 4],  time_adjust=100)
-    make_adjustment(data_df, MOF='Cu-HHTP', ppm="36+22", rep_ids=[0, 1, 2, 3, 4],  time_adjust=50)
-    make_adjustment(data_df, MOF='Ni-HHTP', ppm="5+5", rep_ids=[0, 1, 2, 3],  time_adjust=100)
-    make_adjustment(data_df, MOF='Ni-HHTP', ppm="31+9", rep_ids=[0, 1, 2, 3, 4], time_adjust=50)
-    return
-
-
-@app.cell
-def _(data_df):
-    # update csv with adjusted responses
-    data_df.to_csv("responses.csv")
+def _(data):
+    data
     return
 
 
@@ -478,8 +473,14 @@ def _(mo):
 
 
 @app.cell
-def _(MOFs, features, np, pd, ppms):
-    def assemble_array_response(data_df, ppms=ppms, MOFs=MOFs, n_replicates=7, features=features):
+def _(MOFs, features):
+    feature_col_names = [MOF + " " + feature for MOF in MOFs for feature in features]
+    return (feature_col_names,)
+
+
+@app.cell
+def _(MOFs, feature_col_names, features, np, pd, ppms):
+    def assemble_array_response(data, ppms=ppms, MOFs=MOFs, n_replicates=7, features=features):
         #  matrix will store response features.
         #  col = sensor array response vector
         #  row = particular response feature for a particular MOF (9. 3 MOFs x 3 feature each)
@@ -491,56 +492,51 @@ def _(MOFs, features, np, pd, ppms):
         for ppm in ppms:
             for rep in range(n_replicates):
                 col = []
-                experiment = {'ppm': ppm,
-                            'rep_id': rep}
+                experiment = {'ppm': ppm, 'rep_id': rep}
                 for MOF in MOFs:
                     for (i, feature) in enumerate(features):
                         try:
-                            val = data_df.loc[(data_df['MOF']==MOF)
-                                            & (data_df['ppm']==ppm)
-                                            & (data_df['rep_id']==rep)][feature]
+                            val = data.loc[(data['MOF']==MOF)
+                                            & (data['ppm']==ppm)
+                                            & (data['rep_id']==rep)][feature]
                             assert len(val) <= 1, "more than one instance"
                             col.append(val.iloc[0])
                         except (IndexError, KeyError):
                             pass
 
-                    # only append column if entire array response exists
-                    if len(col) == len(MOFs) * len(features):
-                        matrix.append(col)
-                        experiments.append(experiment)
-                    else:
-                        print("No complete array for experiment: ", experiment)
+                # only append column if entire array response exists
+                if len(col) == len(MOFs) * len(features):
+                    matrix.append(col)
+                    experiments.append(experiment)
+                else:
+                    print("No complete array for experiment: ", experiment)
 
+        # join experiments and responses in one combo data frame.
         matrix = np.array(matrix)
-        response_array = pd.DataFrame(matrix)
-        return experiments, response_array
+        response_array = pd.DataFrame(matrix, columns=feature_col_names)
+        combo_df = pd.DataFrame(experiments).join(response_array)
+
+        # H2S, SO2 columns
+        combo_df["H2S"] = combo_df["ppm"].apply(lambda x : int(x.split("+")[0]))
+        combo_df["SO2"] = combo_df["ppm"].apply(lambda x : int(x.split("+")[1]))
+    
+        return combo_df
     return (assemble_array_response,)
 
 
 @app.cell
-def _(PowerTransformer, assemble_array_response, data_df, pd):
-    experiments, response_array = assemble_array_response(data_df)
-    response_array = pd.DataFrame(PowerTransformer().fit_transform(response_array))
-    return experiments, response_array
-
-
-@app.cell
-def _(experiments, pd):
-    experiments_df = pd.DataFrame(experiments)
-    return (experiments_df,)
-
-
-@app.cell
-def _(experiments_df, response_array):
-    combo_df = experiments_df.join(response_array)
+def _(assemble_array_response, data):
+    combo_df = assemble_array_response(data)
+    combo_df
     return (combo_df,)
 
 
 @app.cell
-def _(combo_df):
-    combo_df["H2S"] = combo_df["ppm"].apply(lambda x : int(x.split("+")[0]))
-    combo_df["SO2"] = combo_df["ppm"].apply(lambda x : int(x.split("+")[1]))
-    return
+def _(PowerTransformer, combo_df, feature_col_names):
+    transformed_combo_df = combo_df.copy()
+    transformed_combo_df[feature_col_names] = PowerTransformer().fit_transform(transformed_combo_df[feature_col_names])
+    transformed_combo_df
+    return (transformed_combo_df,)
 
 
 @app.cell(hide_code=True)
@@ -549,33 +545,25 @@ def _(mo):
     return
 
 
-@app.cell
-def _(combo_df):
-    # transpose to get complete arrays as columns for heatmap
-    heatmatrixdf = combo_df.sort_values(by=["H2S", "SO2"], ascending=False) # sort by H2S and SO2 concentrations
-    return (heatmatrixdf,)
-
-
-@app.cell
-def _():
-    def gas_to_subscript(gas):
-         sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-         return gas.translate(sub)
-    return (gas_to_subscript,)
+@app.function
+def gas_to_subscript(gas):
+     sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+     return gas.translate(sub)
 
 
 @app.cell
 def _(
     LinearSegmentedColormap,
+    feature_col_names,
     features,
-    gas_to_subscript,
     make_axes_locatable,
     np,
     plt,
-    response_array,
     sns,
 ):
-    def plot_heatmap(heatmatrixdf):
+    def plot_heatmap(transformed_combo_df):
+        heatmatrixdf = transformed_combo_df.sort_values(by=["H2S", "SO2"], ascending=False)
+    
         RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(28, 10), gridspec_kw={'height_ratios':[3, 1, 1]})
 
@@ -584,7 +572,7 @@ def _(
         yticklabels = features * 3
 
         # create heatmap
-        heat_matrix_plot = heatmatrixdf[response_array.columns].T
+        heat_matrix_plot = heatmatrixdf[feature_col_names].T
         heat = sns.heatmap(heat_matrix_plot, cmap=RdGn, center=0, yticklabels=yticklabels, vmin=-2, vmax=2,
                          square=True, ax=ax1, cbar=False)
 
@@ -651,8 +639,8 @@ def _(
 
 
 @app.cell
-def _(heatmatrixdf, plot_heatmap):
-    plot_heatmap(heatmatrixdf)
+def _(plot_heatmap, transformed_combo_df):
+    plot_heatmap(transformed_combo_df)
     return
 
 
@@ -664,13 +652,15 @@ def _(mo):
 
 @app.cell
 def _(np):
-    def conc_to_class(combo_df):
-        valid_region = (combo_df["H2S"] != 20.0) & (combo_df["SO2"] != 20.0)
-        new_combo_df = combo_df[valid_region].copy()
+    def get_classification_data(combo_df):
+        # cut out UQ points
+        loo_data = (combo_df["H2S"] != 20.0) & (combo_df["SO2"] != 20.0)
+    
+        new_combo_df = combo_df[loo_data].copy()
         new_combo_df.reset_index(inplace=True)
-        new_combo_df["target"] = str(np.zeros(sum(valid_region)))
+        new_combo_df["target"] = str(np.zeros(sum(loo_data)))
         for i in range(len(new_combo_df)):
-            if new_combo_df.loc[i, "H2S"] < 20 and new_combo_df.loc[i, "SO2"] < 20: 
+            if new_combo_df.loc[i, "H2S"] < 20 and new_combo_df.loc[i, "SO2"] < 20:
                 new_combo_df.loc[i, "target"] = "--"
             elif new_combo_df.loc[i, "H2S"] > 20 and new_combo_df.loc[i, "SO2"] < 20:
                 new_combo_df.loc[i, "target"] = "+-"
@@ -679,13 +669,13 @@ def _(np):
             else:  
                 new_combo_df.loc[i, "target"] = "++"
         return new_combo_df
-    return (conc_to_class,)
+    return (get_classification_data,)
 
 
 @app.cell
-def _(combo_df, conc_to_class):
-    new_combo_df = conc_to_class(combo_df)
-    return (new_combo_df,)
+def _(get_classification_data, transformed_combo_df):
+    pca_combo_df = get_classification_data(transformed_combo_df)
+    return (pca_combo_df,)
 
 
 @app.cell
@@ -695,10 +685,11 @@ def _(combo_df):
 
 
 @app.cell
-def _(Line2D, UQ_region, combo_df, new_combo_df, plt, target_to_color):
-    facecolors = [target_to_color[target] for target in new_combo_df["target"]]
+def _(Line2D, UQ_region, combo_df, pca_combo_df, plt, target_to_color):
+    facecolors = [target_to_color[target] for target in pca_combo_df["target"]]
+
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    ax.scatter(new_combo_df["H2S"], new_combo_df["SO2"], 
+    ax.scatter(pca_combo_df["H2S"], pca_combo_df["SO2"], 
                clip_on=False, marker="o", s=100, facecolors=facecolors, edgecolors='black')
     ax.scatter(combo_df.loc[UQ_region, "H2S"], combo_df.loc[UQ_region, "SO2"], 
                clip_on=False, marker="s", s=100, facecolors='none', edgecolors='black')
@@ -712,21 +703,24 @@ def _(Line2D, UQ_region, combo_df, new_combo_df, plt, target_to_color):
     ]
 
     # region plots
-    alpha = 0.05
+    alpha = 0.1
     ax.fill_between([0, 20], 0, y2=20, color=(target_to_color["--"], alpha))
     ax.fill_between([0, 20], 20, y2=40, color=(target_to_color["-+"], alpha))
     ax.fill_between([20, 40], 0, y2=20, color=(target_to_color["+-"], alpha))
     ax.fill_between([20, 40], 20, y2=40, color=(target_to_color["++"], alpha))
+
+    plt.plot([20, 20], [0, 40], color="black", lw=1, linestyle="dashed")
+    plt.plot([0, 40], [20, 20], color="black", lw=1, linestyle="dashed")
 
     ax.set_xlabel("H$_2$S [ppm]")
     ax.set_ylabel("SO$_2$ [ppm]")
     ax.set_xlim(0, 40)
     ax.set_ylim(0, 40)
     ax.set_aspect('equal', "box")
-    ax.legend(handles=legend_elements)
+    ax.legend(handles=legend_elements, fontsize=14)
     plt.savefig("experiment_space.pdf")
-    plt.show();
-    return alpha, ax, facecolors, fig, legend_elements
+    plt.show()
+    return
 
 
 @app.cell(hide_code=True)
@@ -736,17 +730,18 @@ def _(mo):
 
 
 @app.cell
-def _(PCA, new_combo_df, pd, response_array):
-    pcadata = new_combo_df[response_array.columns].copy()
+def _(PCA, feature_col_names, pca_combo_df, pd):
+    pcadata = pca_combo_df[feature_col_names].copy()
 
     pca = PCA(n_components=2)
     latent_vectors = pca.fit_transform(pcadata)
     z1, z2 = pca.explained_variance_ratio_
     print(z1, z2)
 
-    pcs = pd.DataFrame(data=latent_vectors, columns = ['PC1', 'PC2'])
-    pcs_and_exps = pd.concat([new_combo_df, pcs], axis = 1) # add principal components to f
-    return latent_vectors, pca, pcadata, pcs, pcs_and_exps, z1, z2
+    pcs = pd.DataFrame(data=latent_vectors, columns=['PC1', 'PC2'])
+    pcs_and_exps = pd.concat([pca_combo_df, pcs], axis=1) # add principal components to f
+    pcs_and_exps
+    return pcs_and_exps, z1, z2
 
 
 @app.cell
@@ -758,7 +753,7 @@ def _(Line2D, plt, target_to_color, target_to_shape):
         mixture_types = pcs_and_exps['target']
         unique_mixture = (("--", "H$_2$S$^-$, SO$_2$$^-$"), ("+-", "H$_2$S$^+$, SO$_2$$^-$"), 
                               ("-+", "H$_2$S$^-$, SO$_2$$^+$"), ("++", "H$_2$S$^+$, SO$_2$$^+$"))
-        
+
         fig, ax = plt.subplots()
         ax.axhline(y=0, color='grey', zorder=0)
         ax.axvline(x=0, color='grey', zorder=0)
@@ -767,12 +762,12 @@ def _(Line2D, plt, target_to_color, target_to_shape):
         mixture_legend_elements = []
         for mixture_type, label in unique_mixture:
             mixture_mask = (mixture_types == mixture_type)    
-            scatter = ax.scatter(pc1[mixture_mask], pc2[mixture_mask], s=80,
+            scatter = ax.scatter(pc1[mixture_mask], pc2[mixture_mask], s=100,
                                 edgecolors=target_to_color[mixture_type], marker=target_to_shape[mixture_type], 
                                  linewidths=1.5, facecolors='none')
             mixture_legend_elements.append(Line2D([0], [0], marker=target_to_shape[mixture_type], color='w', label=label,
                                             markeredgecolor=target_to_color[mixture_type], markerfacecolor='none', markersize=10))
-            
+
         # set x and y axis labels and limits
         ax.set_xlabel(f'PC1 score, z$_1$ [{round(z1*100, 1)}%]')
         ax.set_ylabel(f'PC2 score, z$_2$ [{round(z2*100, 1)}%]')
@@ -790,7 +785,7 @@ def _(Line2D, plt, target_to_color, target_to_shape):
         # Adjust the layout
         plt.savefig(savename, bbox_extra_artists=(mixture_legend, ), bbox_inches='tight')
 
-        return plt.show()
+        plt.show()
     return (plot_PCA,)
 
 
@@ -807,57 +802,93 @@ def _(mo):
 
 
 @app.cell
-def _(RandomForestClassifier, new_combo_df, np, response_array):
-    def classification():
-        model_metric = {"true" : [], "pred" : []}
-        features_importance = np.zeros(response_array.shape[1])
-        for (H2S_ppm, SO2_ppm) in np.unique(new_combo_df[['H2S', 'SO2']].values, axis=0):
-            test_ids = (new_combo_df["H2S"] == H2S_ppm) & (new_combo_df["SO2"] == SO2_ppm)
-            train_ids = ~test_ids
-            X_train = new_combo_df.loc[train_ids, response_array.columns]
-            X_test = new_combo_df.loc[test_ids, response_array.columns]
-            y_train = new_combo_df.loc[train_ids, "target"]
-            y_test = new_combo_df.loc[test_ids, "target"]
+def _(combo_df, get_classification_data):
+    rf_df = get_classification_data(combo_df) # un-normalized!
+    return (rf_df,)
 
-            model_metric["true"].extend(y_test)
+
+@app.cell
+def _(RandomForestClassifier, feature_col_names, np):
+    def loo_classification(rf_df):
+        parity_data = {"true" : [], "pred" : []}
+        features_importance = np.zeros(len(feature_col_names))
+        # loop over (H2S, SO2) concentrations
+        for (H2S_ppm, SO2_ppm) in np.unique(rf_df[['H2S', 'SO2']].values, axis=0):
+            # multiple replicates may be in test set.
+            test_ids = (rf_df["H2S"] == H2S_ppm) & (rf_df["SO2"] == SO2_ppm)
+            train_ids = ~test_ids
+        
+            X_train = rf_df.loc[train_ids, feature_col_names]
+            X_test = rf_df.loc[test_ids, feature_col_names]
+        
+            y_train = rf_df.loc[train_ids, "target"]
+            y_test = rf_df.loc[test_ids, "target"]
+
+        
             clf = RandomForestClassifier(n_estimators=500, random_state=0)
             clf.fit(X_train, y_train)
             y_pred = clf.predict(X_test)
 
-            model_metric["pred"].extend(y_pred)
+            # track (y_true, y_pred) parity plot
+            parity_data["true"].extend(y_test)
+            parity_data["pred"].extend(y_pred)
+        
             features_importance += clf.feature_importances_
-        return model_metric, features_importance / len(np.unique(new_combo_df[['H2S', 'SO2']].values, axis=0))
-    return (classification,)
+
+        return parity_data, features_importance / len(np.unique(rf_df[['H2S', 'SO2']].values, axis=0)), clf.classes_
+    return (loo_classification,)
 
 
 @app.cell
-def _(classification):
-    metric, features_importance = classification()
-    return features_importance, metric
+def _(loo_classification, rf_df):
+    parity_data, features_importance, rf_classes = loo_classification(rf_df)
+    return features_importance, parity_data, rf_classes
 
 
 @app.cell
-def _(confusion_matrix, metric):
-    cm = confusion_matrix(metric["true"], metric["pred"])
+def _():
+    rf_class_to_pretty_name = {
+        "++": "H$_2$S$^+,$ SO$_2^+$",
+        "-+": "H$_2$S$^-,$ SO$_2^+$",
+        "--": "H$_2$S$^-,$ SO$_2^-$",
+        "+-": "H$_2$S$^+,$ SO$_2^-$",
+    }
+    rf_class_to_pretty_name
+    return (rf_class_to_pretty_name,)
+
+
+@app.cell
+def _(confusion_matrix, parity_data, pd, rf_class_to_pretty_name, rf_classes):
+    cm = pd.DataFrame(
+        confusion_matrix(parity_data["true"], parity_data["pred"], labels=rf_classes), 
+        columns=[rf_class_to_pretty_name[c] for c in rf_classes]
+    )
+    cm.index = [rf_class_to_pretty_name[c] for c in rf_classes]
     return (cm,)
 
 
 @app.cell
+def _(cm):
+    cm
+    return
+
+
+@app.cell
 def _(cm, plt, sns):
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=["H$_2$S$^+$, SO$_2$$^+$", "H$_2$S$^+$, SO$_2$$^-$", "H$_2$S$^-$, SO$_2$$^+$", "H$_2$S$^-$, SO$_2$$^-$"],
-                yticklabels=["H$_2$S$^+$, SO$_2$$^+$", "H$_2$S$^+$, SO$_2$$^-$", "H$_2$S$^-$, SO$_2$$^+$", "H$_2$S$^-$, SO$_2$$^-$"],
-                cbar_kws={"label":"# experiments"})
-
-
-    plt.yticks(rotation=0)
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
-
-    plt.title('mixture class classification')
-    plt.tight_layout()
-    plt.savefig("cm.pdf")
-    plt.show()
+    with plt.rc_context({'font.size': 14}):
+        sns.heatmap(
+            cm, annot=True, fmt='d', cmap='Blues', 
+            cbar_kws={"label":"# experiments"},
+            square=True
+        )
+    
+        plt.yticks(rotation=0)
+        plt.xlabel('predicted')
+        plt.ylabel('true')
+    
+        plt.tight_layout()
+        plt.savefig("cm.pdf")
+        plt.show()
     return
 
 
@@ -868,18 +899,34 @@ def _(mo):
 
 
 @app.cell
-def _(MOFs, features_importance, np, pd, plt, sns):
-    def plot_MOF_importance(features_importance=features_importance, MOFs=MOFs):
+def _():
+    mof_to_pretty_name = {
+        "Cu-HHTP": "Cu$_3$(HHTP)$_2$",
+        "Ni-HHTP": "Ni$_3$(HHTP)$_2$",
+        "Zn-HHTP": "Zn$_3$(HHTP)$_2$"
+    }
+    return (mof_to_pretty_name,)
+
+
+@app.cell
+def _(features, mof_to_pretty_name, np, pd, plt, sns):
+    def plot_MOF_importance(features_importance, MOFs):
         MOF_importance = np.zeros(len(MOFs))
+    
         jump = len(features_importance) // len(MOFs) # features are order based on how we iterate over MOFs.
+        assert jump == len(features)
+    
         for (j, MOF) in enumerate(MOFs): 
             MOF_importance[j] = sum(features_importance[j * jump : j * jump + jump])
-        MOF_importance = pd.DataFrame({"sensor importance score" : MOF_importance, 
-                                       "MOF" : ["Zn$_3$(HHTP)$_2$", "Cu$_3$(HHTP)$_2$", "Ni$_3$(HHTP)$_2$"]})
-        MOF_importance.sort_values(by="sensor importance score", inplace=True, ascending=False)
+        
+        MOF_importance = pd.DataFrame(
+            {"importance score" : MOF_importance, 
+            "MOF" : [mof_to_pretty_name[mof] for mof in MOFs]}
+        )
+        MOF_importance.sort_values(by="importance score", inplace=True, ascending=False)
 
         fig, ax = plt.subplots(1, 1)
-        sns.barplot(MOF_importance, x="MOF", y="sensor importance score", edgecolor="black", facecolor="white")
+        sns.barplot(MOF_importance, x="MOF", y="importance score", edgecolor="black", facecolor="white")
         ax.set_ylim(0, 1)
         plt.savefig("sensor_importance.pdf")
         return plt.show()
@@ -887,8 +934,8 @@ def _(MOFs, features_importance, np, pd, plt, sns):
 
 
 @app.cell
-def _(plot_MOF_importance):
-    plot_MOF_importance()
+def _(MOFs, features_importance, plot_MOF_importance):
+    plot_MOF_importance(features_importance, MOFs)
     return
 
 
@@ -899,32 +946,34 @@ def _(mo):
 
 
 @app.cell
-def _(RandomForestClassifier, new_combo_df, response_array):
+def _(RandomForestClassifier, feature_col_names, rf_df):
     clf = RandomForestClassifier(n_estimators=500, random_state=0)
-    clf.fit(new_combo_df[response_array.columns], new_combo_df["target"])
+    clf.fit(rf_df[feature_col_names], rf_df["target"])
     return (clf,)
 
 
 @app.cell
-def _(UQ_region, clf, combo_df, np, response_array):
+def _(UQ_region, clf, combo_df, feature_col_names, np):
     UQ_pred = []
     for estimator in clf.estimators_:
-        pred = estimator.predict(combo_df.loc[UQ_region, response_array.columns])
+        pred = estimator.predict(combo_df.loc[UQ_region, feature_col_names].values)
         UQ_pred.append(pred)
     UQ_pred = np.vstack(UQ_pred)
-    return UQ_pred, estimator, pred
+    UQ_pred
+    return (UQ_pred,)
 
 
 @app.cell
 def _(UQ_pred, UQ_region, np):
     class_dist = np.zeros((sum(UQ_region), 4))
-    for j in range(UQ_pred.shape[1]):
-        counts = np.zeros(4)
+    for j in range(UQ_pred.shape[1]): # j is a data point in the UQ region.
+        counts = np.zeros(4) # counts votes for each class, among the trees.
+        # UQ_pred[:, j] is predictions of all of the trees for data point j.
         classes, count = np.unique(UQ_pred[:, j], return_counts=True)
         counts[classes.astype(int)] = count
         class_dist[j] = counts
-    class_dist /= 5 # covert to percentage
-    return class_dist, classes, count, counts, j
+    class_dist = class_dist / UQ_pred.shape[0] * 100 # covert to percentage
+    return (class_dist,)
 
 
 @app.cell
@@ -937,12 +986,25 @@ def _(UQ_region, combo_df):
 def _(UQ_classification, class_dist, clf):
     UQ_classification[clf.classes_] = class_dist
     UQ_classification.reset_index(drop=True, inplace=True)
+    UQ_classification
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        notes: 
+
+        * for 20 ppm SO2, we'd expect some miss-classification as -+ and --. since def H2S is not there. but we do get some sizeable +- predictions...
+        * for 20 ppm H2S, we'd expect some miss-classification as +- and --. since def SO2 is not there. this is largely indeed the case!
+        """
+    )
     return
 
 
 @app.cell
-def _(UQ_classification):
-    UQ_classification
+def _():
     return
 
 
