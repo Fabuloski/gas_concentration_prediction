@@ -123,8 +123,8 @@ def _(Path, np, pd):
     (2) multiple replicates in separate files
     """
     def read_data(MOF, ppm, time_adjust=0):
-        ppms = ["0+5", "0+10", "0+20", "0+40", "5+0", "10+0", "20+0", "40+0", "4+36", "5+5", 
-                "9+13", "13+27", "18+4", "22+18", "27+31", "31+9","36+22", "40+40"]
+        ppms = ["0+5", "0+10", "0+20", "0+40", "0+80", "5+0", "10+0", "20+0", "40+0", "80+0", "4+36", "5+5", "9+13", 
+            "13+27", "18+4", "22+18", "27+31", "31+9","36+22", "40+40"]
 
         path = Path.cwd().joinpath("H2S+SO2-data", f"{ppm}ppm", MOF).rglob("*.xlsx")
 
@@ -497,10 +497,9 @@ def _(MOFs, features, np, pd, ppms):
                     for (i, feature) in enumerate(features):
                         try:
                             val = data_df.loc[(data_df['MOF']==MOF)
-                                        & (data_df['ppm']==ppm)
-                                        & (data_df['rep_id']==rep)][feature]
+                                            & (data_df['ppm']==ppm)
+                                            & (data_df['rep_id']==rep)][feature]
                             assert len(val) <= 1, "more than one instance"
-
                             col.append(val.iloc[0])
                         except (IndexError, KeyError):
                             pass
@@ -513,9 +512,7 @@ def _(MOFs, features, np, pd, ppms):
                         print("No complete array for experiment: ", experiment)
 
         matrix = np.array(matrix)
-
         response_array = pd.DataFrame(matrix)
-
         return experiments, response_array
     return (assemble_array_response,)
 
@@ -555,41 +552,35 @@ def _(mo):
 @app.cell
 def _(combo_df):
     # transpose to get complete arrays as columns for heatmap
-    heatmatrixdf = combo_df.sort_values(by=["H2S", "SO2"], ascending=False) # sort by H2S and SO2 concentrations"
+    heatmatrixdf = combo_df.sort_values(by=["H2S", "SO2"], ascending=False) # sort by H2S and SO2 concentrations
     return (heatmatrixdf,)
 
 
 @app.cell
 def _():
     def gas_to_subscript(gas):
-        sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-        return gas.translate(sub)
+         sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+         return gas.translate(sub)
     return (gas_to_subscript,)
 
 
 @app.cell
 def _(
     LinearSegmentedColormap,
-    experiments,
     features,
     gas_to_subscript,
-    heatmatrixdf,
     make_axes_locatable,
     np,
-    pd,
     plt,
     response_array,
     sns,
 ):
-    def plot_heatmap():
+    def plot_heatmap(heatmatrixdf):
         RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
-
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(28, 10), gridspec_kw={'height_ratios':[3, 1, 1]})
 
         # font size
         fs = 20
-
-        # tick labels for features (A: area under curve, E: initial slope, S: saturation)
         yticklabels = features * 3
 
         # create heatmap
@@ -611,7 +602,7 @@ def _(
         # add colorbar label
         cbar.set_label(label='transformed response', size=fs)
 
-        # label the cofs:
+        # label the MOFs:
         ax1.annotate('Cu', xy=(1.01, 7.5/9), xycoords='axes fraction',
                     fontsize=fs, ha='left', va='center',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
@@ -632,7 +623,6 @@ def _(
         ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=fs)
 
         # create scatter ppm plot
-        exps = pd.DataFrame(experiments)
         for (ax, gas) in zip((ax2, ax3), ("H2S", "SO2")):
             ax.scatter(x=np.arange(0, len(heatmatrixdf)), y=heatmatrixdf[gas], s=180, clip_on=False)
             ax.set_xlim(ax1.get_xlim())
@@ -656,13 +646,13 @@ def _(
             ax.grid(axis='x', color='grey')
             ax.set_yticks(ticks=[40, 20, 0])
         plt.savefig("heatmap.pdf", bbox_inches='tight', pad_inches=0.5)
-        plt.show()
+        return plt.show()
     return (plot_heatmap,)
 
 
 @app.cell
-def _(plot_heatmap):
-    plot_heatmap()
+def _(heatmatrixdf, plot_heatmap):
+    plot_heatmap(heatmatrixdf)
     return
 
 
@@ -755,7 +745,7 @@ def _(PCA, new_combo_df, pd, response_array):
     print(z1, z2)
 
     pcs = pd.DataFrame(data=latent_vectors, columns = ['PC1', 'PC2'])
-    pcs_and_exps = pd.concat([pd.DataFrame(new_combo_df), pcs], axis = 1) # add principal components to f
+    pcs_and_exps = pd.concat([new_combo_df, pcs], axis = 1) # add principal components to f
     return latent_vectors, pca, pcadata, pcs, pcs_and_exps, z1, z2
 
 
@@ -764,9 +754,10 @@ def _(Line2D, plt, target_to_color, target_to_shape):
     def plot_PCA(pcs_and_exps, z1, z2, savename="PCA.pdf"):
         pc1 = pcs_and_exps['PC1']
         pc2 = pcs_and_exps['PC2']
+
         mixture_types = pcs_and_exps['target']
-        unique_mixture = (("--", r"H$_2$S$^-$, SO$_2$$^-$"), ("+-", r"H$_2$S$^+$, SO$_2$$^-$"), 
-                          ("-+", r"H$_2$S$^-$, SO$_2$$^+$"), ("++", r"H$_2$S$^+$, SO$_2$$^+$"))
+        unique_mixture = (("--", "H$_2$S$^-$, SO$_2$$^-$"), ("+-", "H$_2$S$^+$, SO$_2$$^-$"), 
+                              ("-+", "H$_2$S$^-$, SO$_2$$^+$"), ("++", "H$_2$S$^+$, SO$_2$$^+$"))
         
         fig, ax = plt.subplots()
         ax.axhline(y=0, color='grey', zorder=0)
@@ -775,13 +766,13 @@ def _(Line2D, plt, target_to_color, target_to_shape):
         # create the bubble plot and legend handles
         mixture_legend_elements = []
         for mixture_type, label in unique_mixture:
-            mixture_mask = (mixture_types == mixture_type)
+            mixture_mask = (mixture_types == mixture_type)    
             scatter = ax.scatter(pc1[mixture_mask], pc2[mixture_mask], s=80,
                                 edgecolors=target_to_color[mixture_type], marker=target_to_shape[mixture_type], 
                                  linewidths=1.5, facecolors='none')
             mixture_legend_elements.append(Line2D([0], [0], marker=target_to_shape[mixture_type], color='w', label=label,
                                             markeredgecolor=target_to_color[mixture_type], markerfacecolor='none', markersize=10))
-
+            
         # set x and y axis labels and limits
         ax.set_xlabel(f'PC1 score, z$_1$ [{round(z1*100, 1)}%]')
         ax.set_ylabel(f'PC2 score, z$_2$ [{round(z2*100, 1)}%]')
@@ -797,7 +788,7 @@ def _(Line2D, plt, target_to_color, target_to_shape):
         plt.tight_layout()
 
         # Adjust the layout
-        plt.savefig(savename, bbox_extra_artists=(mixture_legend,), bbox_inches='tight')
+        plt.savefig(savename, bbox_extra_artists=(mixture_legend, ), bbox_inches='tight')
 
         return plt.show()
     return (plot_PCA,)
@@ -852,21 +843,14 @@ def _(confusion_matrix, metric):
 
 
 @app.cell
-def _(new_combo_df, np):
-    np.unique(new_combo_df["target"], return_counts=True)
-    return
-
-
-@app.cell
 def _(cm, plt, sns):
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=[r"H$_2$S$^+$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^-$, SO$_2$$^-$"],
-                yticklabels=[r"H$_2$S$^+$, SO$_2$$^+$", r"H$_2$S$^+$, SO$_2$$^-$", r"H$_2$S$^-$, SO$_2$$^+$", r"H$_2$S$^-$, SO$_2$$^-$"],
+                xticklabels=["H$_2$S$^+$, SO$_2$$^+$", "H$_2$S$^+$, SO$_2$$^-$", "H$_2$S$^-$, SO$_2$$^+$", "H$_2$S$^-$, SO$_2$$^-$"],
+                yticklabels=["H$_2$S$^+$, SO$_2$$^+$", "H$_2$S$^+$, SO$_2$$^-$", "H$_2$S$^-$, SO$_2$$^+$", "H$_2$S$^-$, SO$_2$$^-$"],
                 cbar_kws={"label":"# experiments"})
 
-    # plt.xticks(rotation=90)
-    plt.yticks(rotation=0)
 
+    plt.yticks(rotation=0)
     plt.xlabel('Predicted')
     plt.ylabel('True')
 
@@ -887,10 +871,11 @@ def _(mo):
 def _(MOFs, features_importance, np, pd, plt, sns):
     def plot_MOF_importance(features_importance=features_importance, MOFs=MOFs):
         MOF_importance = np.zeros(len(MOFs))
-        jump = len(features_importance) // len(MOFs)
+        jump = len(features_importance) // len(MOFs) # features are order based on how we iterate over MOFs.
         for (j, MOF) in enumerate(MOFs): 
             MOF_importance[j] = sum(features_importance[j * jump : j * jump + jump])
-        MOF_importance = pd.DataFrame({"sensor importance score" : MOF_importance, "MOF" : MOFs})
+        MOF_importance = pd.DataFrame({"sensor importance score" : MOF_importance, 
+                                       "MOF" : ["Zn$_3$(HHTP)$_2$", "Cu$_3$(HHTP)$_2$", "Ni$_3$(HHTP)$_2$"]})
         MOF_importance.sort_values(by="sensor importance score", inplace=True, ascending=False)
 
         fig, ax = plt.subplots(1, 1)
