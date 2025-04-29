@@ -52,6 +52,12 @@ def _():
 
 
 @app.cell
+def _():
+    from utils import _find_ppm_sheet, linear_regression, SensorResponse, _find_header_row
+    return SensorResponse, linear_regression
+
+
+@app.cell
 def _(plt):
     my_colors = plt.get_cmap('tab10')
     my_colors
@@ -64,7 +70,7 @@ def _():
                   "H2S" : "yellow",
                   "NO" : "blue",
                   "CO" : "grey",
-                  "NH3" : "purple"} 
+                  "NH3" : "purple"}
     return (gas_to_color,)
 
 
@@ -77,52 +83,17 @@ def _(mo):
 @app.cell
 def _(Path, np, pd):
     """
-        _find_ppm_sheet(filname, ppm)
-
-    read in excel file and check the sheet names which include the ppm number.
-    """
-
-    def _find_ppm_sheet(filename, ppm):
-        xlfl = pd.ExcelFile(filename)
-        sheet_names = xlfl.sheet_names
-        target_sheet = sheet_names[0]
-        return target_sheet
-
-    """
-        _find_header_row(filename, search_terms=['Time', 's'])
-
-    read in excel file and check first ten rows for search terms.
-    return the first row in which a search term appears.
-    if not found, return None.
-    """
-    def _find_header_row(filename, ppm_sheet=0, search_terms=['Time', 's']):
-        for i in range(10):  # Check first 10 rows
-            try:
-                df = pd.read_excel(filename, sheet_name=ppm_sheet, header=i, nrows=1)
-                for search_term in search_terms:
-                    if search_term in df.columns:
-                        return i
-            except:
-                pass
-        return None  # If header not found
-
-    """
-        read_data(MOF, ppm)
+        read_data(MOF, gas, ppm, time_adjust)
 
     read in the sensor response data for a given MOF exposed to a
     given gas mixture concentration.
     returns list of pandas data frames with this data. (may be replicates)
     each data frame has two columns: time, DeltaG/G0.
-
-    note: this is complicated because there are two formats for a given
-    cof, gas, carrier, ppm:
-    (1) multiple replicates in the same file
-    (2) multiple replicates in separate files
     """
     def read_data(MOF, gas, ppm, time_adjust=0):
         ppms = [5, 10, 20, 40, 80]
 
-        path = Path.cwd().joinpath("single_concentration", gas, MOF, f"{ppm}ppm").rglob("*.xlsx")
+        path = Path.cwd().joinpath("pure_gases_data", gas, MOF, f"{ppm}ppm").rglob("*.xlsx")
 
         # folders contain multiple excel files, so extract relevant
         files = [file for file in path]
@@ -134,7 +105,7 @@ def _(Path, np, pd):
         for filename in files:
             ppm_sheet = None
             if ppm in ppms:
-                ppm_sheet = _find_ppm_sheet(filename, ppm)
+                ppm_sheet = _find_ppm_sheet(filename)
                 # read in file (need to find header row; not consistent)
                 header_row = _find_header_row(filename, ppm_sheet)
                 df = pd.read_excel(filename, sheet_name=ppm_sheet, header=header_row)
@@ -174,160 +145,12 @@ def _(Path, np, pd):
     return (read_data,)
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""# Helper function to run linear regression""")
-    return
-
-
 @app.cell
-def _(LinearRegression):
-    """
-        linear_regression(df, ids_split)
-
-    perform linear regression on df[ids_split]:
-    ΔG/G0 = m * t + b
-
-    # arguments:
-    * df := dataframe of a single partition of sensor_response data
-    * ids_split := indices of response data partition
-
-    # output: dict of:
-    * coef := coefficient from linear regression
-    * r2 := r2 score
-    * ids_split
-    """
-    def linear_regression(df, ids_split):
-        X = df.loc[ids_split, "s"].to_numpy().reshape(-1, 1)
-        y = df.loc[ids_split, "-ΔG/G0"].to_numpy()
-
-        reg = LinearRegression().fit(X, y)
-
-        r2 = reg.score(X, y)
-
-        slope = reg.coef_[0]
-        intercept = reg.intercept_
-
-        return {'slope': slope, 'r2': r2, 'ids_split': ids_split, 'intercept': intercept}
-    return (linear_regression,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""# Class to extract response features""")
-    return
-
-
-@app.cell
-def _(auc, linear_regression, np, plt, read_data):
-    class SensorResponse:
-        def __init__(self, MOF, gas, ppm, replicate_id, time_adjust=0):
-            self.MOF = MOF
-            self.ppm = ppm
-            self.gas = gas
-            self.replicate_id = replicate_id
-            self.time_adjust = time_adjust
-
-            try:
-                self.data = read_data(MOF, gas, ppm, time_adjust=self.time_adjust)[replicate_id]
-            except IndexError:
-                print(f"Error: replicate_id {replicate_id} does not exist for {MOF} at {ppm} ppm.")
-
-            # store features
-            self.slope_info = None
-            self.saturation = None
-            self.auc = None
-
-        """
-        compute_initial_slope(self, partition_size, total_time_window, mse_bound)
-        estimate initial slope of data.
-
-          arguments:
-              * max_time := indicates the window of time from 0 to max_time to partition data
-              * n_partitions := number of partitions
-              * r2_bound := bound on acceptable r-squared values from linear regression
-        """
-        def compute_initial_slope(self, n_partitions=15, max_time=750.0, r2_bound=0):
-            early_df = self.data[self.data["s"] < max_time]
-
-            # partition data indices
-            ids_splits = np.array_split(early_df.index, n_partitions)
-
-            # create list of regression on each partition of data which satisfy the mean_squared error bound
-            regression_data = [linear_regression(early_df, ids_split) for ids_split in ids_splits]
-            # filter according to r2
-            regression_data = list(filter(lambda res: res['r2'] > r2_bound, regression_data))
-
-            if len(regression_data) == 0:
-                raise Exception("Data has no initial slopes that satisfy r2 bound.")
-
-            # find index of max absolute value of linear regression coefficients
-            id_initial_slope = np.argmax([np.abs(rd['slope']) for rd in regression_data])
-
-            # return regression_data which contains the initial slope
-            self.slope_info = regression_data[id_initial_slope]
-            return self.slope_info
-
-        def compute_saturation(self, n_partitions=50):
-            ids_splits = np.array_split(self.data.index, n_partitions)
-
-            # get mean over partitions
-            means = [np.mean(self.data.iloc[ids_split]['-ΔG/G0']) for ids_split in ids_splits]
-            id_max_magnitude = np.argmax(np.abs(means))
-
-            self.saturation = means[id_max_magnitude]
-            return self.saturation
-
-        # compute area under curve for each GBx DeltaG/G0 using sklearn auc
-        def compute_area_under_response_curve(self):
-            self.auc = auc(self.data["s"], self.data['-ΔG/G0'])
-            return self.auc
-
-        def compute_features(self, n_partitions_saturation=100, n_partitions_slope=15, r2_bound_slope=0):
-            self.compute_saturation(n_partitions=n_partitions_saturation)
-            self.compute_initial_slope(n_partitions=n_partitions_slope, r2_bound=r2_bound_slope)
-            self.compute_area_under_response_curve()
-
-        def viz(self, save=True): # viz the data along with the response features or function u fit to it.
-            if self.slope_info == None or self.saturation == None:
-                raise Exception("Compute features first.")
-
-            fig, ax = plt.subplots()
-
-            plt.xlabel("time [s]")
-            plt.ylabel(r"$\Delta G/G_0$")
-
-            # plot raw response data
-            plt.scatter(self.data['s'], self.data['-ΔG/G0'])
-
-            ###
-            #   viz features
-            ###
-            # saturation
-            plt.axhline(self.saturation, linestyle='-', color="gray")
-
-            # slope
-            t_start = self.data.loc[self.slope_info["ids_split"][0], 's']
-            t_end = self.data.loc[self.slope_info["ids_split"][-1], 's']
-            plt.plot(
-                [t_start, t_end],
-                self.slope_info["slope"] * np.array([t_start, t_end]) + self.slope_info["intercept"],
-                color='orange'
-            )
-
-            all_info = "{}_{}_{}ppm_{}".format(self.MOF, self.gas, self.ppm, self.replicate_id)
-            plt.title(all_info)
-
-            if save:
-                plt.savefig("single_responses/featurized_{}.png".format(all_info), format="png")
-            plt.show()
-    return (SensorResponse,)
-
-
-@app.cell
-def _(SensorResponse):
+def _(SensorResponse, read_data):
     # Test the SensorResponse class initial_slope function
-    _sensor_response = SensorResponse("Ni-HHTP", "CO", 40, 1)
+    _data = read_data("Ni-HHTP", "CO", 40)[1]
+    _title = "{}_{}_{}ppm_{}".format("Ni-HHTP", "CO", 40, 1)
+    _sensor_response = SensorResponse(_data, _title)
     _sensor_response.compute_features()
     _sensor_response.viz(save=True)
     return
@@ -356,9 +179,9 @@ def _(mo):
 
 
 @app.cell
-def _(MOFs, SensorResponse, gases, ppms, read_data_from_file):
-    # list for data, will append cof, gas, carrier, and features of each sensor_response
-    data = []
+def _(MOFs, SensorResponse, gases, ppms, read_data, read_data_from_file):
+    # list for data, will append MOF, gas, and features of each sensor_response
+    raw_data = []
     for gas in gases:
         for MOF in MOFs:
             for ppm in ppms:
@@ -366,34 +189,36 @@ def _(MOFs, SensorResponse, gases, ppms, read_data_from_file):
                     if read_data_from_file:
                         continue
                     try:
-                        sensor_response = SensorResponse(MOF, gas, ppm, rep_id)
+                        this_data = read_data(MOF, gas, ppm)[rep_id]
+                        this_title = "{}_{}_{}ppm_{}".format(MOF, gas, ppm, rep_id)
+                        sensor_response = SensorResponse(this_data, this_title)
                         sensor_response.compute_features()
                         sensor_response.viz(save=True)
-                        data.append([MOF, gas, ppm, rep_id, sensor_response.slope_info['slope'],
+                        raw_data.append([MOF, gas, ppm, rep_id, sensor_response.slope_info['slope'],
                                     sensor_response.saturation, sensor_response.auc]) 
-        
+
                     except (AttributeError, Exception):
                         pass
-    return MOF, data, gas, ppm, rep_id, sensor_response
+    return (
+        MOF,
+        gas,
+        ppm,
+        raw_data,
+        rep_id,
+        sensor_response,
+        this_data,
+        this_title,
+    )
 
 
 @app.cell
-def _(data, pd, read_data_from_file):
+def _(pd, raw_data, read_data_from_file):
     # Put list of data into dataframe
-    if read_data_from_file:
-        data_df = pd.read_csv("responses.csv")
-        data_df.drop(columns=['Unnamed: 0'], inplace=True) # remove index column, artifact of reading in
-    else:
-        data_df = pd.DataFrame(data, columns=['MOF', 'gas', 'ppm', 'rep_id', 'slope', 'saturation', 'auc'])
-        data_df.to_csv("responses.csv")
-    data_df
-    return (data_df,)
+    if not read_data_from_file:
+        prelim_data = pd.DataFrame(raw_data, columns=['MOF', 'gas', 'ppm', 'rep_id', 'slope', 'saturation', 'auc'])
 
-
-@app.cell
-def _(data_df):
-    data_df.head()
-    return
+        prelim_data # b/c we'll make adjustements later.
+    return (prelim_data,)
 
 
 @app.cell(hide_code=True)
@@ -403,87 +228,77 @@ def _(mo):
 
 
 @app.cell
-def _(SensorResponse):
+def _(SensorResponse, read_data):
     # input data, experiment, and slope partition adjustment, output: dataframe and viz with adjusted slope feature
-    def make_adjustment(data_df, gas, MOF, ppm, rep_ids, n_partitions_slope_adj=15, n_partitions_saturation_adj=100, time_adjust=0):
+    def make_adjustment(
+        prelim_data, gas, MOF, ppm, rep_ids, 
+        n_partitions_slope_adj=15, n_partitions_saturation_adj=100, time_adjust=0
+    ):
         for rep_id in rep_ids:
             try:
-                sensor_response = SensorResponse(MOF, gas, ppm, rep_id, time_adjust=time_adjust)
+                this_data = read_data(MOF, gas, ppm, time_adjust=time_adjust)[rep_id]
+                this_title = "{}_{}_{}ppm_{}".format(MOF, gas, ppm, rep_id)
+                sensor_response = SensorResponse(this_data, this_title)
                 sensor_response.compute_features(n_partitions_slope=n_partitions_slope_adj,
                                                  n_partitions_saturation=n_partitions_saturation_adj)
                 sensor_response.viz(save=True)
-                data_df.loc[(data_df['MOF']==MOF)
-                            & (data_df['gas']==gas)
-                            & (data_df['ppm']==ppm)
-                            & (data_df['rep_id']==rep_id), 'slope'] = sensor_response.slope_info['slope']
-                data_df.loc[(data_df['MOF']==MOF)
-                            & (data_df['gas']==gas)
-                            & (data_df['ppm']==ppm)
-                            & (data_df['rep_id']==rep_id), 'auc'] = sensor_response.auc
-                data_df.loc[(data_df['MOF']==MOF)
-                            & (data_df['gas']==gas)
-                            & (data_df['ppm']==ppm)
-                            & (data_df['rep_id']==rep_id), 'saturation'] = sensor_response.saturation
+                prelim_data.loc[(prelim_data['MOF']==MOF)
+                                    & (prelim_data['gas']==gas)
+                                    & (prelim_data['ppm']==ppm)
+                                    & (prelim_data['rep_id']==rep_id), 'slope'] = sensor_response.slope_info['slope']
+                prelim_data.loc[(prelim_data['MOF']==MOF)
+                                    & (prelim_data['ppm']==ppm)
+                                    & (prelim_data['gas']==gas)
+                                    & (prelim_data['rep_id']==rep_id), 'auc'] = sensor_response.auc
+                prelim_data.loc[(prelim_data['MOF']==MOF)
+                                    & (prelim_data['gas']==gas)
+                                    & (prelim_data['ppm']==ppm)
+                                    & (prelim_data['rep_id']==rep_id), 'saturation'] = sensor_response.saturation
             except:
                 pass
-        return data_df
+        return prelim_data
     return (make_adjustment,)
 
 
 @app.cell
-def _(data_df, make_adjustment):
-    make_adjustment(data_df, gas="SO2", MOF='Cu-HHTP', ppm=5, rep_ids=[2], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Ni-HHTP', gas="H2S", ppm=5, rep_ids=[1], n_partitions_slope_adj=3)
-    return
+def _(make_adjustment, pd, prelim_data, read_data_from_file):
+    # do all of these in one cell.
+    if not read_data_from_file:
+        data = prelim_data.copy()
+        make_adjustment(data, gas="SO2", MOF='Cu-HHTP', ppm=5, rep_ids=[2], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Ni-HHTP', gas="H2S", ppm=5, rep_ids=[1], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Zn-HHTP', gas="H2S", ppm=5, rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Zn-HHTP', gas="H2S", ppm=10, rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
+        make_adjustment(data, MOF='Zn-HHTP', gas="SO2", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=150)
+        make_adjustment(data, MOF='Cu-HHTP', gas="SO2", ppm=10, rep_ids=[3], time_adjust=200)
+        make_adjustment(data, MOF='Cu-HHTP', gas="SO2", ppm=5, rep_ids=[3], n_partitions_slope_adj=5)
+        make_adjustment(data, MOF='Cu-HHTP', gas="H2S", ppm=10, rep_ids=[0, 1, 2], time_adjust=200)
+        make_adjustment(data, MOF='Cu-HHTP', gas="H2S", ppm=20, rep_ids=[0, 1, 2, 3], time_adjust=200)
+        make_adjustment(data, MOF='Cu-HHTP', gas="CO", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=500)
+        make_adjustment(data, MOF='Cu-HHTP', gas="CO", ppm=10, rep_ids=[0, 1, 2, 3], time_adjust=150)
+        make_adjustment(data, MOF='Cu-HHTP', gas="CO", ppm=20, rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
+        make_adjustment(data, MOF='Cu-HHTP', gas="CO", ppm=40, rep_ids=[0, 1, 2, 3], time_adjust=50)
+        make_adjustment(data, MOF='Cu-HHTP', gas="CO", ppm=80, rep_ids=[0, 1, 2, 3], time_adjust=100)
+        make_adjustment(data, MOF='Cu-HHTP', gas="NH3", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=350)
+        make_adjustment(data, MOF='Cu-HHTP', gas="NH3", ppm=10, rep_ids=[0, 1, 2], time_adjust=100)
+        make_adjustment(data, MOF='Cu-HHTP', gas="NH3", ppm=20, rep_ids=[0, 1, 2, 3], time_adjust=50)
+        make_adjustment(data, MOF='Ni-HHTP', gas="NH3", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=200)
+        make_adjustment(data, MOF='Ni-HHTP', gas="NH3", ppm=10, rep_ids=[0, 1, 2], time_adjust=100)
+        make_adjustment(data, MOF='Ni-HHTP', gas="NH3", ppm=80, rep_ids=[0, 1, 2, 3], time_adjust=100)
+        make_adjustment(data, MOF='Zn-HHTP', gas="NH3", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=200)
+        make_adjustment(data, MOF='Zn-HHTP', gas="NH3", ppm=10, rep_ids=[0, 1, 2, 3], time_adjust=100)
+        make_adjustment(data, MOF='Zn-HHTP', gas="NH3", ppm=40, rep_ids=[0, 1, 2, 3], time_adjust=100)
+        make_adjustment(data, MOF='Zn-HHTP', gas="CO", ppm=10, rep_ids=[0], n_partitions_slope_adj=5)
+        make_adjustment(data, MOF='Zn-HHTP', gas="CO", ppm=20, rep_ids=[0], time_adjust=300, n_partitions_slope_adj=5)
+        make_adjustment(data, MOF='Zn-HHTP', gas="CO", ppm=40, rep_ids=[0, 2, 3], time_adjust=200)
+        make_adjustment(data, MOF='Zn-HHTP', gas="CO", ppm=80, rep_ids=[1, 2, 3], time_adjust=50)
 
-
-@app.cell
-def _(data_df, make_adjustment):
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="H2S", ppm=5, rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="H2S", ppm=10, rep_ids=[0, 1, 2, 3], n_partitions_slope_adj=3)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="SO2", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=150)
-    return
-
-
-@app.cell
-def _(data_df, make_adjustment):
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="SO2", ppm=10, rep_ids=[3], time_adjust=200)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="SO2", ppm=5, rep_ids=[3], n_partitions_slope_adj=5)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="H2S", ppm=10, rep_ids=[0, 1, 2], time_adjust=200)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="H2S", ppm=20, rep_ids=[0, 1, 2, 3], time_adjust=200)
-    return
-
-
-@app.cell
-def _(data_df, make_adjustment):
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="CO", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=500)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="CO", ppm=10, rep_ids=[0, 1, 2, 3], time_adjust=150)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="CO", ppm=20, rep_ids=[0, 1, 2, 3, 4], time_adjust=100)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="CO", ppm=40, rep_ids=[0, 1, 2, 3], time_adjust=50)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="CO", ppm=80, rep_ids=[0, 1, 2, 3], time_adjust=100)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="NH3", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=350)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="NH3", ppm=10, rep_ids=[0, 1, 2], time_adjust=100)
-    make_adjustment(data_df, MOF='Cu-HHTP', gas="NH3", ppm=20, rep_ids=[0, 1, 2, 3], time_adjust=50)
-    make_adjustment(data_df, MOF='Ni-HHTP', gas="NH3", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=200)
-    make_adjustment(data_df, MOF='Ni-HHTP', gas="NH3", ppm=10, rep_ids=[0, 1, 2], time_adjust=100)
-    make_adjustment(data_df, MOF='Ni-HHTP', gas="NH3", ppm=80, rep_ids=[0, 1, 2, 3], time_adjust=100)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="NH3", ppm=5, rep_ids=[0, 1, 2, 3], time_adjust=200)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="NH3", ppm=10, rep_ids=[0, 1, 2, 3], time_adjust=100)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="NH3", ppm=40, rep_ids=[0, 1, 2, 3], time_adjust=100)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="CO", ppm=10, rep_ids=[0], n_partitions_slope_adj=5)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="CO", ppm=20, rep_ids=[0], time_adjust=300, n_partitions_slope_adj=5)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="CO", ppm=40, rep_ids=[0, 2, 3], time_adjust=200)
-    make_adjustment(data_df, MOF='Zn-HHTP', gas="CO", ppm=80, rep_ids=[1, 2, 3], time_adjust=50)
-
-
-    return
-
-
-@app.cell
-def _(data_df):
-    # update csv with adjusted responses
-    data_df.to_csv("responses_for_pure_gas.csv")
-    return
+          # save
+        data.to_csv("pure_gases_responses.csv")
+    else:
+        data = pd.read_csv("pure_gases_responses.csv") # this is adjusted.
+        data.drop(columns=['Unnamed: 0'], inplace=True) # remove index column, artifact of reading in
+    return (data,)
 
 
 @app.cell(hide_code=True)
@@ -493,8 +308,21 @@ def _(mo):
 
 
 @app.cell
-def _(MOFs, features, gases, np, pd, ppms):
-    def assemble_array_response(data_df, gases=gases, ppms=ppms, MOFs=MOFs, n_replicates=7, features=features):
+def _(MOFs, features):
+    feature_col_names = [MOF + " " + feature for MOF in MOFs for feature in features]
+    return (feature_col_names,)
+
+
+@app.cell
+def _(data):
+    data
+    return
+
+
+@app.cell
+def _(MOFs, feature_col_names, features, gases, np, pd, ppms):
+    def assemble_array_response(data, gases=gases, ppms=ppms, MOFs=MOFs, n_replicates=7, features=features, 
+                                feature_col_names=feature_col_names):
         #  matrix will store response features.
         #  col = sensor array response vector
         #  row = particular response feature for a particular MOF (9. 3 MOFs x 3 feature each)
@@ -512,47 +340,35 @@ def _(MOFs, features, gases, np, pd, ppms):
                     for MOF in MOFs:
                         for (i, feature) in enumerate(features):
                             try:
-                                val = data_df.loc[(data_df['MOF']==MOF)
-                                                & (data_df['gas']==gas)
-                                                & (data_df['ppm']==ppm)
-                                                & (data_df['rep_id']==rep)][feature]
+                                val = data.loc[(data['MOF']==MOF)
+                                                & (data['gas']==gas)
+                                                & (data['ppm']==ppm)
+                                                & (data['rep_id']==rep)][feature]
                                 assert len(val) <= 1, "more than one instance"
-        
+
                                 col.append(val.iloc[0])
                             except (IndexError, KeyError):
                                 pass
-        
-                        # only append column if entire array response exists
-                        if len(col) == len(MOFs) * len(features):
-                            matrix.append(col)
-                            experiments.append(experiment)
-                        else:
-                            print("No complete array for experiment: ", experiment)
 
+                    # only append column if entire array response exists
+                    if len(col) == len(MOFs) * len(features):
+                        matrix.append(col)
+                        experiments.append(experiment)
+                    else:
+                        print("No complete array for experiment: ", experiment)
+     # join experiments and responses in one combo data frame.
         matrix = np.array(matrix)
+        response_array = pd.DataFrame(matrix, columns=feature_col_names)
+        combo_df = pd.DataFrame(experiments).join(response_array)
 
-        response_array = pd.DataFrame(matrix)
 
-        return experiments, response_array
+        return combo_df
     return (assemble_array_response,)
 
 
 @app.cell
-def _(PowerTransformer, assemble_array_response, data_df, pd):
-    experiments, response_array = assemble_array_response(data_df)
-    response_array = pd.DataFrame(PowerTransformer().fit_transform(response_array))
-    return experiments, response_array
-
-
-@app.cell
-def _(experiments, pd):
-    experiments_df = pd.DataFrame(experiments)
-    return (experiments_df,)
-
-
-@app.cell
-def _(experiments_df, response_array):
-    combo_df = experiments_df.join(response_array)
+def _(assemble_array_response, data):
+    combo_df = assemble_array_response(data)
     return (combo_df,)
 
 
@@ -563,133 +379,129 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # # transpose to get complete arrays as columns for heatmap
-    # heatmatrixdf = combo_df.sort_values(by=["gas", "ppm"], ascending=False) # sort by H2S and SO2 concentrations"
-    return
+def _(PowerTransformer, combo_df, feature_col_names):
+    transformed_combo_df = combo_df.copy()
+    transformed_combo_df[feature_col_names] = PowerTransformer().fit_transform(transformed_combo_df[feature_col_names])
+    transformed_combo_df
+    return (transformed_combo_df,)
 
 
 @app.cell
-def _():
-    # def plot_heatmap(experiments=experiments):
-    #     RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
-        
-    #     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(28, 10), gridspec_kw={'height_ratios':[3,1]})
-        
-    #     # font size
-    #     fs = 20
-        
-    #     # tick labels for features
-    #     yticklabels = ['area', 'slope', 'saturation'] * 3
-        
-    #     # count number of experiments for each type of gas
-    #     gas_counts = {gas: sum(exp.get('gas') == gas for exp in experiments) for gas in gases}
-    #     # return gas_counts
-        
-    #     # create heatmap
-    #     heat = sns.heatmap(heatmatrixdf[response_array.columns], cmap=RdGn, center=0, yticklabels=yticklabels, vmin=-2, vmax=2,
-    #                      square=True, ax=ax1, cbar=False)
-    #     ax1.set_ylabel("response feature", fontsize=fs)
-        
-    #     # create a new axes for the colorbar
-    #     divider = make_axes_locatable(ax1)
-    #     cax = divider.append_axes("right", size="2%", pad=0.8)  # increase pad to move colorbar further right
-        
-    #     # add colorbar to the new axes
-    #     cbar = fig.colorbar(heat.collections[0], cax=cax)
-        
-    #     # adjust colorbar ticks
-    #     cbar.ax.tick_params(labelsize=fs)
-    #     cbar.set_ticks([-2, -1, 0, 1, 2])
-        
-    #     # add colorbar label
-    #     cbar.set_label(label='transformed response', size=fs)
-        
-    #     # label the gases:
-    #     colordict = {'CO': 'grey', 'H2S': 'goldenrod', 'NH3': 'purple', 'NO': 'teal'} # colors for different gas types
-        
-    #     ax1.annotate('CO', color=gas_to_color['CO'], xy=((gas_counts['CO']/2 + 0.1)/47, 1.08), xycoords='axes fraction',
-    #                 fontsize=fs, ha='center', va='bottom',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle='-[, widthB=1.5, lengthB=1.25', lw=2, color='k'))
-        
-    #     ax1.annotate('H$_2$S', color=gas_to_color['H2S'], xy=((gas_counts['CO']+gas_counts['H2S']/2)/47, 1.08), xycoords='axes fraction',
-    #                 fontsize=fs, ha='center', va='bottom',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle='-[, widthB=13.3, lengthB=1.25', lw=2, color='k'))
-        
-    #     ax1.annotate('NH$_3$', color=gas_to_color['NH3'], xy=((gas_counts['CO']+gas_counts['H2S']+gas_counts['NH3']/2 )/47, 1.08), xycoords='axes fraction',
-    #                 fontsize=fs, ha='center', va='bottom',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle='-[, widthB=12.6, lengthB=1.25', lw=2, color='k'))
-        
-    #     ax1.annotate('NO', color=gas_to_color['NO'], xy=((gas_counts['CO']+gas_counts['H2S']+gas_counts['NH3']+gas_counts['NO']/2 )/47, 1.08), xycoords='axes fraction',
-    #                 fontsize=fs, ha='center', va='bottom',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle='-[, widthB=9.4, lengthB=1.25', lw=2, color='k'))
-    #     ax1.annotate('SO$_2$', color=gas_to_color['SO2'], xy=((gas_counts['CO']+gas_counts['H2S']+gas_counts['NH3']+gas_counts['NO']/2 )/47, 1.08), xycoords='axes fraction',
-    #                 fontsize=fs, ha='center', va='bottom',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle='-[, widthB=9.4, lengthB=1.25', lw=2, color='k'))
-        
-    #     # label the MOFs:
-    #     ax1.annotate('Cu', xy=(1.01, 7.5/9), xycoords='axes fraction',
-    #                 fontsize=fs, ha='left', va='center',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle=']- ,widthA=1.6, lengthA=1, angleA=180', lw=2, color='k'))
+def _(
+    LinearSegmentedColormap,
+    feature_col_names,
+    gas_to_color,
+    make_axes_locatable,
+    np,
+    plt,
+    sns,
+):
+    def plot_heatmap(transformed_combo_df):
+        RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(28, 10), gridspec_kw={'height_ratios' : [3, 1]})
+        # font size
+        fs = 20
+        # tick labels for features
+        yticklabels = ['area', 'slope', 'saturation'] * 3
 
-    #     ax1.annotate('Ni', xy=(1.01, 4.5/9), xycoords='axes fraction',
-    #                 fontsize=fs, ha='left', va='center',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle=']- ,widthA=1.6, lengthA=1, angleA=180', lw=2, color='k'))
+        # create heatmap
+        heat = sns.heatmap(transformed_combo_df[feature_col_names].T, cmap=RdGn, center=0, yticklabels=yticklabels, vmin=-2, vmax=2,
+                         square=True, ax=ax1, cbar=False)
+        ax1.set_ylabel("response feature", fontsize=fs)
 
-    #     ax1.annotate('Zn', xy=(1.01, 1.5/9), xycoords='axes fraction',
-    #                 fontsize=fs, ha='left', va='center',
-    #                 bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-    #                 arrowprops=dict(arrowstyle=']- ,widthA=1.6, lengthA=1, angleA=180', lw=2, color='k'))
+        # create a new axes for the colorbar
+        divider = make_axes_locatable(ax1)
+        cax = divider.append_axes("right", size="2%", pad=0.8)  # increase pad to move colorbar further right
+
+        # add colorbar to the new axes
+        cbar = fig.colorbar(heat.collections[0], cax=cax)
+
+        # adjust colorbar ticks
+        cbar.ax.tick_params(labelsize=fs)
+        cbar.set_ticks([-2, -1, 0, 1, 2])
+
+        # add colorbar label
+        cbar.set_label(label='transformed response', size=fs)
+
+        ax1.annotate('SO2', color='black', xy=(19/178, 1.08), xycoords='axes fraction',
+                    fontsize=fs, ha='center', va='bottom',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=7.8, lengthB=.5', lw=2, color='k'))
+
+        text = ax1.annotate('H$_2$S', color='black', xy=((19 + 9)/89, 1.08), xycoords='axes fraction', 
+                    fontsize=fs, ha='center', va='bottom', zorder=1,
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=7.5, lengthB=.5', lw=2, color='k'))
+
+        ax1.annotate('NO', color='black', xy=((28 + 18)/89, 1.08), xycoords='axes fraction',
+                    fontsize=fs, ha='center', va='bottom',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=7.5, lengthB=.5', lw=2, color='k'))
+
+        ax1.annotate('CO', color='black', xy=((46 + 16.5)/89, 1.08), xycoords='axes fraction',
+                    fontsize=fs, ha='center', va='bottom', 
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=6.25, lengthB=.5', lw=2, color='k'))
+
+        ax1.annotate('NH$_3$', color='black', xy=((62.5+17)/89, 1.08), xycoords='axes fraction',
+                    fontsize=fs, ha='center', va='bottom',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=7.8, lengthB=.5', lw=2, color='k'))
+
+        # label the MOFs:
+        ax1.annotate('Cu', xy=(1.01, 7.5/9), xycoords='axes fraction',
+                    fontsize=fs, ha='left', va='center',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.2, lengthA=1, angleA=180', lw=2, color='k'))
+
+        ax1.annotate('Ni', xy=(1.01, 4.5/9), xycoords='axes fraction',
+                    fontsize=fs, ha='left', va='center',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.2, lengthA=1, angleA=180', lw=2, color='k'))
+
+        ax1.annotate('Zn', xy=(1.01, 1.5/9), xycoords='axes fraction',
+                    fontsize=fs, ha='left', va='center',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.2, lengthA=1, angleA=180', lw=2, color='k'))
+
+        ax1.set_xticks([])
+        ax1.set_yticks(ax1.get_yticks())
+        ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=fs)
+
+        colorlist = [gas_to_color[gas] for gas in transformed_combo_df["gas"]] # create list to assign color to each ppm data point
+
+        ax2.grid(axis='x', color='grey', zorder=0)
+        ax2.set_xticks(ticks=np.arange(0, len(transformed_combo_df['ppm']), 1), labels=[])
+        ax2.tick_params(direction="in", length=10)
+        ax2.set_axisbelow(True) 
+        ax2.scatter(x=np.arange(0, len(transformed_combo_df['ppm']), 1), y=transformed_combo_df['ppm'], 
+                     edgecolor="black", clip_on=False, s=180, c=colorlist)
+        ax2.set_xlim(ax1.get_xlim())
+        ax2.set_ylabel("concentration\n[ppm]", fontsize=fs)
+        ax2.tick_params(axis='both', which='both', labelsize=fs)
+
+        # adjust the position of ax2 to align with ax1
+        plt.subplots_adjust(hspace=-0.5)
+        pos1 = ax1.get_position()
+        pos2 = ax2.get_position()
+        ax2.set_position([pos1.x0, pos2.y0, pos1.width-0.035, pos2.height - 0.05])
         
-    #     ax1.set_xticks([])
-    #     ax1.set_yticks(ax1.get_yticks())
-    #     ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=fs)
-        
-    #     # create scatter ppm plot
-    #     exps = pd.DataFrame(experiments)
-        
-    #     colorlist = [gas_to_color[gas] for gas in exps['gas']] # create list to assign color to each ppm data point
-        
-    #     ax2.grid(axis='x', color='grey', zorder=0)
-    #     ax2.set_xticks(ticks=np.arange(0,len(exps['ppm']),1), labels=[])
-    #     ax2.tick_params(direction="in", length=10)
-    #     ax2.set_axisbelow(True) 
-    #     ax2.scatter(x=np.arange(0,len(exps['ppm']),1), y=exps['ppm'], s=180, c=colorlist)
-    #     ax2.set_xlim(ax1.get_xlim())
-    #     ax2.set_ylabel("concentration in \ndry N$_2$ [ppm]", fontsize=fs)
-    #     ax2.tick_params(axis='both', which='both', labelsize=fs)
-        
-        
-    #     # adjust the position of ax2 to align with ax1
-    #     pos1 = ax1.get_position()
-    #     pos2 = ax2.get_position()
-    #     ax2.set_position([pos1.x0 - 0.015, pos2.y0, pos1.width, pos2.height])
-        
-        
-    #     # make ppm plot nice
-    #     ax2.spines['top'].set_visible(False)
-    #     ax2.spines['right'].set_visible(False)
-    #     ax2.spines['left'].set_visible(False)
-    #     ax2.set_xlim(left=-0.22)
-    #     ax2.set_ylim(top=90, bottom=-0.1)
-        
-        
-    #     ax2.set_yticks(ticks=[80, 40, 0])
-    #     plt.savefig("heatmap.pdf", bbox_inches='tight', pad_inches=0.5)
-    #     plt.show()
-    return
+        # make ppm plot nice
+        ax2.spines['top'].set_visible(False)
+        ax2.spines['right'].set_visible(False)
+        ax2.spines['left'].set_visible(False)
+        ax2.set_xlim(left=-0.22)
+        ax2.set_ylim(top=90, bottom=-0.1)
+
+        ax2.set_yticks(ticks=[80, 40, 0])
+        plt.savefig("heatmap_pure_gas.pdf", bbox_inches='tight', pad_inches=0.5)
+        plt.show()
+    return (plot_heatmap,)
 
 
 @app.cell
-def _():
-    # plot_heatmap()
+def _(plot_heatmap, transformed_combo_df):
+    plot_heatmap(transformed_combo_df)
     return
 
 
@@ -700,8 +512,8 @@ def _(mo):
 
 
 @app.cell
-def _(PCA, combo_df, pd, response_array):
-    pcadata = combo_df[response_array.columns].copy()
+def _(PCA, combo_df, feature_col_names, pd, transformed_combo_df):
+    pcadata = transformed_combo_df[feature_col_names].copy()
 
     pca = PCA(n_components=2)
     latent_vectors = pca.fit_transform(pcadata)
@@ -709,7 +521,7 @@ def _(PCA, combo_df, pd, response_array):
     print(z1, z2)
 
     pcs = pd.DataFrame(data=latent_vectors, columns = ['PC1', 'PC2'])
-    pcs_and_exps = pd.concat([combo_df, pcs], axis = 1) # add principal components to f
+    pcs_and_exps = pd.concat([combo_df, pcs], axis = 1)
     return latent_vectors, pca, pcadata, pcs, pcs_and_exps, z1, z2
 
 
@@ -764,8 +576,9 @@ def _(Line2D, gas_to_color, np, plt):
 
 
 @app.cell
-def _(pcs_and_exps, plot_PCA, z1, z2):
-    plot_PCA(pcs_and_exps, z1, z2)
+def _(pcs_and_exps, plot_PCA, plt, z1, z2):
+    with plt.rc_context({'font.size': 10}):
+        plot_PCA(pcs_and_exps, z1, z2)
     return
 
 

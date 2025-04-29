@@ -1,8 +1,6 @@
-
-
 import marimo
 
-__generated_with = "0.13.2"
+__generated_with = "0.10.15"
 app = marimo.App(width="medium")
 
 
@@ -43,11 +41,20 @@ def _():
         auc,
         confusion_matrix,
         make_axes_locatable,
+        mean_squared_error,
         np,
+        path_effects,
         pd,
         plt,
+        r2_score,
         sns,
     )
+
+
+@app.cell
+def _():
+    from utils import _find_ppm_sheet, linear_regression, SensorResponse, _find_header_row
+    return SensorResponse, linear_regression
 
 
 @app.cell
@@ -85,47 +92,12 @@ def _(mo):
 @app.cell
 def _(Path, np, pd):
     """
-        _find_ppm_sheet(filname, ppm)
-
-    read in excel file and check the sheet names which include the ppm number.
-    """
-
-    def _find_ppm_sheet(filename, ppm):
-        xlfl = pd.ExcelFile(filename)
-        sheet_names = xlfl.sheet_names
-        target_sheet = sheet_names[0]
-        return target_sheet
-
-    """
-        _find_header_row(filename, search_terms=['Time', 's'])
-
-    read in excel file and check first ten rows for search terms.
-    return the first row in which a search term appears.
-    if not found, return None.
-    """
-    def _find_header_row(filename, ppm_sheet=0, search_terms=['Time', 's']):
-        for i in range(10):  # Check first 10 rows
-            try:
-                df = pd.read_excel(filename, sheet_name=ppm_sheet, header=i, nrows=1)
-                for search_term in search_terms:
-                    if search_term in df.columns:
-                        return i
-            except:
-                pass
-        return None  # If header not found
-
-    """
-        read_data(MOF, ppm)
+        read_data(MOF, ppm, time_adjust)
 
     read in the sensor response data for a given MOF exposed to a
     given gas mixture concentration.
     returns list of pandas data frames with this data. (may be replicates)
     each data frame has two columns: time, DeltaG/G0.
-
-    note: this is complicated because there are two formats for a given
-    cof, gas, carrier, ppm:
-    (1) multiple replicates in the same file
-    (2) multiple replicates in separate files
     """
     def read_data(MOF, ppm, time_adjust=0):
         ppms = ["0+5", "0+10", "0+20", "0+40", "0+80", "5+0", "10+0", "20+0", "40+0", "80+0", "4+36", "5+5", "9+13", 
@@ -143,7 +115,7 @@ def _(Path, np, pd):
         for filename in files:
             ppm_sheet = None
             if ppm in ppms:
-                ppm_sheet = _find_ppm_sheet(filename, ppm)
+                ppm_sheet = _find_ppm_sheet(filename)
                 # read in file (need to find header row; not consistent)
                 header_row = _find_header_row(filename, ppm_sheet)
                 df = pd.read_excel(filename, sheet_name=ppm_sheet, header=header_row)
@@ -183,159 +155,12 @@ def _(Path, np, pd):
     return (read_data,)
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""# Helper function to run linear regression""")
-    return
-
-
 @app.cell
-def _(LinearRegression):
-    """
-        linear_regression(df, ids_split)
-
-    perform linear regression on df[ids_split]:
-    ΔG/G0 = m * t + b
-
-    # arguments:
-    * df := dataframe of a single partition of sensor_response data
-    * ids_split := indices of response data partition
-
-    # output: dict of:
-    * coef := coefficient from linear regression
-    * r2 := r2 score
-    * ids_split
-    """
-    def linear_regression(df, ids_split):
-        X = df.loc[ids_split, "s"].to_numpy().reshape(-1, 1)
-        y = df.loc[ids_split, "-ΔG/G0"].to_numpy()
-
-        reg = LinearRegression().fit(X, y)
-
-        r2 = reg.score(X, y)
-
-        slope = reg.coef_[0]
-        intercept = reg.intercept_
-
-        return {'slope': slope, 'r2': r2, 'ids_split': ids_split, 'intercept': intercept}
-    return (linear_regression,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""# Class to extract response features""")
-    return
-
-
-@app.cell
-def _(MOF, auc, linear_regression, np, plt, ppm, read_data, replicate_id):
-    class SensorResponse:
-        def __init__(self, data, time_adjust=0):
-            self.MOF = MOF
-            self.ppm = ppm
-            self.replicate_id = replicate_id
-            self.time_adjust = time_adjust
-
-            try:
-                self.data = read_data(MOF, ppm, time_adjust=self.time_adjust)[replicate_id]
-            except IndexError:
-                print(f"Error: replicate_id {replicate_id} does not exist for {MOF} at {ppm} ppm.")
-
-            # store features
-            self.slope_info = None
-            self.saturation = None
-            self.auc = None
-
-        """
-        compute_initial_slope(self, partition_size, total_time_window, mse_bound)
-        estimate initial slope of data.
-
-          arguments:
-              * max_time := indicates the window of time from 0 to max_time to partition data
-              * n_partitions := number of partitions
-              * r2_bound := bound on acceptable r-squared values from linear regression
-        """
-        def compute_initial_slope(self, n_partitions=15, max_time=750.0, r2_bound=0):
-            early_df = self.data[self.data["s"] < max_time]
-
-            # partition data indices
-            ids_splits = np.array_split(early_df.index, n_partitions)
-
-            # create list of regression on each partition of data which satisfy the mean_squared error bound
-            regression_data = [linear_regression(early_df, ids_split) for ids_split in ids_splits]
-            # filter according to r2
-            regression_data = list(filter(lambda res: res['r2'] > r2_bound, regression_data))
-
-            if len(regression_data) == 0:
-                raise Exception("Data has no initial slopes that satisfy r2 bound.")
-
-            # find index of max absolute value of linear regression coefficients
-            id_initial_slope = np.argmax([np.abs(rd['slope']) for rd in regression_data])
-
-            # return regression_data which contains the initial slope
-            self.slope_info = regression_data[id_initial_slope]
-            return self.slope_info
-
-        def compute_saturation(self, n_partitions=50):
-            ids_splits = np.array_split(self.data.index, n_partitions)
-
-            # get mean over partitions
-            means = [np.mean(self.data.iloc[ids_split]['-ΔG/G0']) for ids_split in ids_splits]
-            id_max_magnitude = np.argmax(np.abs(means))
-
-            self.saturation = means[id_max_magnitude]
-            return self.saturation
-
-        # compute area under curve for each GBx DeltaG/G0 using sklearn auc
-        def compute_area_under_response_curve(self):
-            self.auc = auc(self.data["s"], self.data['-ΔG/G0'])
-            return self.auc
-
-        def compute_features(self, n_partitions_saturation=100, n_partitions_slope=15, r2_bound_slope=0):
-            self.compute_saturation(n_partitions=n_partitions_saturation)
-            self.compute_initial_slope(n_partitions=n_partitions_slope, r2_bound=r2_bound_slope)
-            self.compute_area_under_response_curve()
-
-        def viz(self, save=True): # viz the data along with the response features or function u fit to it.
-            if self.slope_info == None or self.saturation == None:
-                raise Exception("Compute features first.")
-
-            fig, ax = plt.subplots()
-
-            plt.xlabel("time [s]")
-            plt.ylabel(r"$\Delta G/G_0$")
-
-            # plot raw response data
-            plt.scatter(self.data['s'], self.data['-ΔG/G0'])
-
-            ###
-            #   viz features
-            ###
-            # saturation
-            plt.axhline(self.saturation, linestyle='-', color="gray")
-
-            # slope
-            t_start = self.data.loc[self.slope_info["ids_split"][0], 's']
-            t_end = self.data.loc[self.slope_info["ids_split"][-1], 's']
-            plt.plot(
-                [t_start, t_end],
-                self.slope_info["slope"] * np.array([t_start, t_end]) + self.slope_info["intercept"],
-                color='orange'
-            )
-
-            all_info = "{}_{}ppm_{}".format(self.MOF, self.ppm, self.replicate_id)
-            plt.title(all_info)
-
-            if save:
-                plt.savefig("responses/featurized_{}.png".format(all_info), format="png")
-            plt.show()
-    return (SensorResponse,)
-
-
-@app.cell
-def _(SensorResponse):
+def _(SensorResponse, read_data):
     # Test the SensorResponse class initial_slope function
-    _sensor_response = SensorResponse("Ni-HHTP", "0+40", 1)
+    _data = read_data("Ni-HHTP", "0+40")[1]
+    _title = "{}_{}ppm_{}".format("Ni-HHTP", "0+40", 1)
+    _sensor_response = SensorResponse(_data, _title)
     _sensor_response.compute_features()
     _sensor_response.viz(save=True)
     return
@@ -364,22 +189,32 @@ def _(mo):
 
 
 @app.cell
-def _(MOFs, SensorResponse, ppms, read_data_from_file):
-    # list for data, will append cof, gas, carrier, and features of each sensor_response
+def _(MOFs, SensorResponse, ppms, read_data, read_data_from_file):
+    # list for data, will append MOF, ppm, and features of each sensor_response
     raw_data = []
     if not read_data_from_file:
         for MOF in MOFs:
             for ppm in ppms:
                 for rep_id in range(8):
                     try:
-                        sensor_response = SensorResponse(MOF, ppm, rep_id)
+                        this_data = read_data(MOF, ppm)[rep_id]
+                        this_title = "{}_{}ppm_{}".format(MOF, ppm, rep_id)
+                        sensor_response = SensorResponse(this_data, this_title)
                         sensor_response.compute_features()
                         sensor_response.viz(save=True)
                         raw_data.append([MOF, ppm, rep_id, sensor_response.slope_info['slope'],
                                     sensor_response.saturation, sensor_response.auc]) 
                     except (AttributeError, Exception):
                         pass
-    return MOF, ppm, raw_data
+    return (
+        MOF,
+        ppm,
+        raw_data,
+        rep_id,
+        sensor_response,
+        this_data,
+        this_title,
+    )
 
 
 @app.cell
@@ -399,7 +234,7 @@ def _(mo):
 
 
 @app.cell
-def _(SensorResponse):
+def _(SensorResponse, read_data):
     # input data, experiment, and slope partition adjustment, output: dataframe and viz with adjusted slope feature
     def make_adjustment(
         prelim_data, MOF, ppm, rep_ids, 
@@ -407,7 +242,9 @@ def _(SensorResponse):
     ):
         for rep_id in rep_ids:
             try:
-                sensor_response = SensorResponse(MOF, ppm, rep_id, time_adjust=time_adjust)
+                this_data = read_data(MOF, ppm, time_adjust=time_adjust)[rep_id]
+                this_title = "{}_{}ppm_{}".format(MOF, ppm, rep_id)
+                sensor_response = SensorResponse(this_data, this_title)
                 sensor_response.compute_features(n_partitions_slope=n_partitions_slope_adj,
                                                  n_partitions_saturation=n_partitions_saturation_adj)
                 sensor_response.viz(save=True)
@@ -519,7 +356,7 @@ def _(MOFs, feature_col_names, features, np, pd, ppms):
         # H2S, SO2 columns
         combo_df["H2S"] = combo_df["ppm"].apply(lambda x : int(x.split("+")[0]))
         combo_df["SO2"] = combo_df["ppm"].apply(lambda x : int(x.split("+")[1]))
-    
+
         return combo_df
     return (assemble_array_response,)
 
@@ -545,10 +382,12 @@ def _(mo):
     return
 
 
-@app.function
-def gas_to_subscript(gas):
-     sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-     return gas.translate(sub)
+@app.cell
+def _():
+    def gas_to_subscript(gas):
+        sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+        return gas.translate(sub)
+    return (gas_to_subscript,)
 
 
 @app.cell
@@ -556,6 +395,7 @@ def _(
     LinearSegmentedColormap,
     feature_col_names,
     features,
+    gas_to_subscript,
     make_axes_locatable,
     np,
     plt,
@@ -563,7 +403,7 @@ def _(
 ):
     def plot_heatmap(transformed_combo_df):
         heatmatrixdf = transformed_combo_df.sort_values(by=["H2S", "SO2"], ascending=False)
-    
+
         RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(28, 10), gridspec_kw={'height_ratios':[3, 1, 1]})
 
@@ -594,17 +434,17 @@ def _(
         ax1.annotate('Cu', xy=(1.01, 7.5/9), xycoords='axes fraction',
                     fontsize=fs, ha='left', va='center',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.6, lengthA=1, angleA=180', lw=2, color='k'))
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.55, lengthA=1, angleA=180', lw=2, color='k'))
 
         ax1.annotate('Ni', xy=(1.01, 4.5/9), xycoords='axes fraction',
                     fontsize=fs, ha='left', va='center',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.6, lengthA=1, angleA=180', lw=2, color='k'))
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.55, lengthA=1, angleA=180', lw=2, color='k'))
 
         ax1.annotate('Zn', xy=(1.01, 1.5/9), xycoords='axes fraction',
                     fontsize=fs, ha='left', va='center',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.6, lengthA=1, angleA=180', lw=2, color='k'))
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.55, lengthA=1, angleA=180', lw=2, color='k'))
 
         ax1.set_xticks([])
         ax1.set_yticks(ax1.get_yticks())
@@ -621,7 +461,7 @@ def _(
             # adjust the position of ax2 to align with ax1
             pos1 = ax1.get_position()
             pos2 = ax.get_position()
-            ax.set_position([pos1.x0-0.015, pos2.y0, pos1.width, pos2.height])
+            ax.set_position([pos1.x0, pos2.y0, pos1.width - 0.035, pos2.height])
 
 
             # make ppm plot nice
@@ -655,7 +495,7 @@ def _(np):
     def get_classification_data(combo_df):
         # cut out UQ points
         loo_data = (combo_df["H2S"] != 20.0) & (combo_df["SO2"] != 20.0)
-    
+
         new_combo_df = combo_df[loo_data].copy()
         new_combo_df.reset_index(inplace=True)
         new_combo_df["target"] = str(np.zeros(sum(loo_data)))
@@ -720,7 +560,7 @@ def _(Line2D, UQ_region, combo_df, pca_combo_df, plt, target_to_color):
     ax.legend(handles=legend_elements, fontsize=14)
     plt.savefig("experiment_space.pdf")
     plt.show()
-    return
+    return alpha, ax, facecolors, fig, legend_elements
 
 
 @app.cell(hide_code=True)
@@ -741,7 +581,7 @@ def _(PCA, feature_col_names, pca_combo_df, pd):
     pcs = pd.DataFrame(data=latent_vectors, columns=['PC1', 'PC2'])
     pcs_and_exps = pd.concat([pca_combo_df, pcs], axis=1) # add principal components to f
     pcs_and_exps
-    return pcs_and_exps, z1, z2
+    return latent_vectors, pca, pcadata, pcs, pcs_and_exps, z1, z2
 
 
 @app.cell
@@ -817,14 +657,14 @@ def _(RandomForestClassifier, feature_col_names, np):
             # multiple replicates may be in test set.
             test_ids = (rf_df["H2S"] == H2S_ppm) & (rf_df["SO2"] == SO2_ppm)
             train_ids = ~test_ids
-        
+
             X_train = rf_df.loc[train_ids, feature_col_names]
             X_test = rf_df.loc[test_ids, feature_col_names]
-        
+
             y_train = rf_df.loc[train_ids, "target"]
             y_test = rf_df.loc[test_ids, "target"]
 
-        
+
             clf = RandomForestClassifier(n_estimators=500, random_state=0)
             clf.fit(X_train, y_train)
             y_pred = clf.predict(X_test)
@@ -832,7 +672,7 @@ def _(RandomForestClassifier, feature_col_names, np):
             # track (y_true, y_pred) parity plot
             parity_data["true"].extend(y_test)
             parity_data["pred"].extend(y_pred)
-        
+
             features_importance += clf.feature_importances_
 
         return parity_data, features_importance / len(np.unique(rf_df[['H2S', 'SO2']].values, axis=0)), clf.classes_
@@ -858,7 +698,13 @@ def _():
 
 
 @app.cell
-def _(confusion_matrix, parity_data, pd, rf_class_to_pretty_name, rf_classes):
+def _(
+    confusion_matrix,
+    parity_data,
+    pd,
+    rf_class_to_pretty_name,
+    rf_classes,
+):
     cm = pd.DataFrame(
         confusion_matrix(parity_data["true"], parity_data["pred"], labels=rf_classes), 
         columns=[rf_class_to_pretty_name[c] for c in rf_classes]
@@ -881,11 +727,11 @@ def _(cm, plt, sns):
             cbar_kws={"label":"# experiments"},
             square=True
         )
-    
+
         plt.yticks(rotation=0)
         plt.xlabel('predicted')
         plt.ylabel('true')
-    
+
         plt.tight_layout()
         plt.savefig("cm.pdf")
         plt.show()
@@ -912,13 +758,13 @@ def _():
 def _(features, mof_to_pretty_name, np, pd, plt, sns):
     def plot_MOF_importance(features_importance, MOFs):
         MOF_importance = np.zeros(len(MOFs))
-    
+
         jump = len(features_importance) // len(MOFs) # features are order based on how we iterate over MOFs.
         assert jump == len(features)
-    
+
         for (j, MOF) in enumerate(MOFs): 
             MOF_importance[j] = sum(features_importance[j * jump : j * jump + jump])
-        
+
         MOF_importance = pd.DataFrame(
             {"importance score" : MOF_importance, 
             "MOF" : [mof_to_pretty_name[mof] for mof in MOFs]}
@@ -960,7 +806,7 @@ def _(UQ_region, clf, combo_df, feature_col_names, np):
         UQ_pred.append(pred)
     UQ_pred = np.vstack(UQ_pred)
     UQ_pred
-    return (UQ_pred,)
+    return UQ_pred, estimator, pred
 
 
 @app.cell
@@ -973,7 +819,7 @@ def _(UQ_pred, UQ_region, np):
         counts[classes.astype(int)] = count
         class_dist[j] = counts
     class_dist = class_dist / UQ_pred.shape[0] * 100 # covert to percentage
-    return (class_dist,)
+    return class_dist, classes, count, counts, j
 
 
 @app.cell
