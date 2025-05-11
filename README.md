@@ -20,3 +20,4 @@ We run PCA, supervised learning, sensor importance, and uncertainty quantificati
 -  `pure_gases_data`: contains Microsoft Excel raw response files of sensors to different single gas concentrations [ppm]
 - `responses`: contains visualization of the response of sensors to every single experiment (ppm of gas mixture (H2S + SO2)) with the features extracted
 -  `doe (Design of Experiment)`: contains the code `design_of_mixture_expts.py` used to design the experiment space
+-  `utils.py`: contains the helper functions code used in our analysis
