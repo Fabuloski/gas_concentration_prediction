@@ -102,6 +102,7 @@ def _(Path, np, pd):
 
         # extract data from Excel files in list
         dfs = []
+        # full_dfs = []
         for filename in files:
             ppm_sheet = None
             if ppm in ppms:
@@ -118,6 +119,7 @@ def _(Path, np, pd):
             # exposure time begins at 780s, ends 2580s
             start_index = df.index[df['s'] == 780 + time_adjust].tolist()[0]
             end_index = df.index[df['s'] == 2580 + time_adjust].tolist()[0]
+            # full_df = df.copy()
             df = df.loc[start_index:end_index, df.columns[ids_cols_keep]]
 
             # check time is sliced properly
@@ -125,18 +127,22 @@ def _(Path, np, pd):
             assert df.iloc[-1]["s"] == 2580.0 + time_adjust
             # reshift time
             df["s"] = df["s"] - (780.0 + time_adjust)
+            # full_df.s = full_df.s - (780.0 + time_adjust)
 
 
             # drop columns with missing values
             df = df.dropna(axis='columns')
+            # full_df = full_df.dropna(axis='columns')
 
             df.reset_index(drop=True, inplace=True)
+            # full_df.reset_index(drop=True, inplace=True)
 
             # separate replicates into differente dataframes and append to dfs
+            # for (_df, store) in zip((df, full_df), (dfs, full_dfs)):
             for i in df.columns:
                 if 'A' in i and not np.all(df[i] == 0):
                     data_rep = df[['s', i]]
-                    G0 = df[i].iloc[0]
+                    G0 = data_rep[i].iloc[0]
                     # replace muA column with -deltaG/G0 calculation: -ΔG/G0 = -(muA - G0)/G0 * 100
                     data_rep.loc[:, i] = 100 * (-(data_rep.loc[:, i] - G0) / G0)
                     data_rep = data_rep.rename(columns={i: "-ΔG/G0"})
@@ -168,7 +174,7 @@ def _():
     MOFs = ["Cu-HHTP", "Ni-HHTP", "Zn-HHTP"]
     features = ['auc', 'slope', 'saturation']
     ppms = [5, 10, 20, 40, 80]
-    gases = ["SO2", "H2S", "NO", "CO", "NH3"]
+    gases = ["CO", "NH3", "SO2", "H2S", "NO"]
     return MOFs, features, gases, ppms
 
 
@@ -195,7 +201,7 @@ def _(MOFs, SensorResponse, gases, ppms, read_data, read_data_from_file):
                         sensor_response.compute_features()
                         sensor_response.viz(save=True)
                         raw_data.append([MOF, gas, ppm, rep_id, sensor_response.slope_info['slope'],
-                                    sensor_response.saturation, sensor_response.auc]) 
+                                        sensor_response.saturation, sensor_response.auc]) 
 
                     except (AttributeError, Exception):
                         pass
@@ -390,6 +396,7 @@ def _(PowerTransformer, combo_df, feature_col_names):
 def _(
     LinearSegmentedColormap,
     feature_col_names,
+    features,
     gas_to_color,
     make_axes_locatable,
     np,
@@ -398,16 +405,15 @@ def _(
 ):
     def plot_heatmap(transformed_combo_df):
         RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(28, 10), gridspec_kw={'height_ratios' : [3, 1]})
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(28, 14), gridspec_kw={'height_ratios' : [5, 1.1]})
         # font size
-        fs = 20
+        fs = 30
         # tick labels for features
-        yticklabels = ['area', 'slope', 'saturation'] * 3
+        yticklabels = features * 3
 
         # create heatmap
-        heat = sns.heatmap(transformed_combo_df[feature_col_names].T, cmap=RdGn, center=0, yticklabels=yticklabels, vmin=-2, vmax=2,
-                         square=True, ax=ax1, cbar=False)
-        ax1.set_ylabel("response feature", fontsize=fs)
+        heat = sns.heatmap(transformed_combo_df[feature_col_names].T, cmap=RdGn, center=0, yticklabels=yticklabels, 
+                           vmin=-2, vmax=2, square=True, ax=ax1, cbar=False)
 
         # create a new axes for the colorbar
         divider = make_axes_locatable(ax1)
@@ -421,52 +427,52 @@ def _(
         cbar.set_ticks([-2, -1, 0, 1, 2])
 
         # add colorbar label
-        cbar.set_label(label='transformed response', size=fs)
+        cbar.set_label(label='transformed\nresponse', size=fs)
 
-        ax1.annotate('SO2', color='black', xy=(19/178, 1.08), xycoords='axes fraction',
-                    fontsize=fs, ha='center', va='bottom',
-                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle='-[, widthB=7.8, lengthB=.5', lw=2, color='k'))
-
-        text = ax1.annotate('H$_2$S', color='black', xy=((19 + 9)/89, 1.08), xycoords='axes fraction', 
-                    fontsize=fs, ha='center', va='bottom', zorder=1,
-                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle='-[, widthB=7.5, lengthB=.5', lw=2, color='k'))
-
-        ax1.annotate('NO', color='black', xy=((28 + 18)/89, 1.08), xycoords='axes fraction',
-                    fontsize=fs, ha='center', va='bottom',
-                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle='-[, widthB=7.5, lengthB=.5', lw=2, color='k'))
-
-        ax1.annotate('CO', color='black', xy=((46 + 16.5)/89, 1.08), xycoords='axes fraction',
+        ax1.annotate('CO', color='black', xy=(15/178, 1.08), xycoords='axes fraction',
                     fontsize=fs, ha='center', va='bottom', 
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle='-[, widthB=6.25, lengthB=.5', lw=2, color='k'))
-
-        ax1.annotate('NH$_3$', color='black', xy=((62.5+17)/89, 1.08), xycoords='axes fraction',
+                    arrowprops=dict(arrowstyle='-[, widthB=4.15, lengthB=.5', lw=2, color='k'))
+        
+        ax1.annotate('NH$_3$', color='black', xy=((15 + 9.5)/89, 1.08), xycoords='axes fraction',
                     fontsize=fs, ha='center', va='bottom',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle='-[, widthB=7.8, lengthB=.5', lw=2, color='k'))
+                    arrowprops=dict(arrowstyle='-[, widthB=5.2, lengthB=.5', lw=2, color='k'))
+        
+        ax1.annotate('SO$_2$', color='black', xy=((34 + 9.5)/89, 1.08), xycoords='axes fraction',
+                    fontsize=fs, ha='center', va='bottom',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=5.25, lengthB=.5', lw=2, color='k'))
+
+        text = ax1.annotate('H$_2$S', color='black', xy=((53 + 9)/89, 1.08), xycoords='axes fraction', 
+                    fontsize=fs, ha='center', va='bottom', zorder=1,
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=5., lengthB=.5', lw=2, color='k'))
+
+        ax1.annotate('NO', color='black', xy=((71 + 9)/89, 1.08), xycoords='axes fraction',
+                    fontsize=fs, ha='center', va='bottom',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle='-[, widthB=5.0, lengthB=.5', lw=2, color='k'))
 
         # label the MOFs:
         ax1.annotate('Cu', xy=(1.01, 7.5/9), xycoords='axes fraction',
                     fontsize=fs, ha='left', va='center',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.2, lengthA=1, angleA=180', lw=2, color='k'))
+                    arrowprops=dict(arrowstyle=']- ,widthA=.8, lengthA=1, angleA=180', lw=2, color='k'))
 
         ax1.annotate('Ni', xy=(1.01, 4.5/9), xycoords='axes fraction',
                     fontsize=fs, ha='left', va='center',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.2, lengthA=1, angleA=180', lw=2, color='k'))
+                    arrowprops=dict(arrowstyle=']- ,widthA=.8, lengthA=1, angleA=180', lw=2, color='k'))
 
         ax1.annotate('Zn', xy=(1.01, 1.5/9), xycoords='axes fraction',
                     fontsize=fs, ha='left', va='center',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.2, lengthA=1, angleA=180', lw=2, color='k'))
+                    arrowprops=dict(arrowstyle=']- ,widthA=.8, lengthA=1, angleA=180', lw=2, color='k'))
 
         ax1.set_xticks([])
         ax1.set_yticks(ax1.get_yticks())
-        ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=fs)
+        ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=26)
 
         colorlist = [gas_to_color[gas] for gas in transformed_combo_df["gas"]] # create list to assign color to each ppm data point
 
@@ -475,17 +481,17 @@ def _(
         ax2.tick_params(direction="in", length=10)
         ax2.set_axisbelow(True) 
         ax2.scatter(x=np.arange(0, len(transformed_combo_df['ppm']), 1), y=transformed_combo_df['ppm'], 
-                     edgecolor="black", clip_on=False, s=180, c=colorlist)
+                     edgecolor="black", clip_on=False, s=200, c=colorlist)
         ax2.set_xlim(ax1.get_xlim())
         ax2.set_ylabel("concentration\n[ppm]", fontsize=fs)
         ax2.tick_params(axis='both', which='both', labelsize=fs)
 
         # adjust the position of ax2 to align with ax1
-        plt.subplots_adjust(hspace=-0.5)
+        plt.subplots_adjust(hspace=-0.7)
         pos1 = ax1.get_position()
         pos2 = ax2.get_position()
         ax2.set_position([pos1.x0, pos2.y0, pos1.width-0.035, pos2.height - 0.05])
-        
+
         # make ppm plot nice
         ax2.spines['top'].set_visible(False)
         ax2.spines['right'].set_visible(False)
@@ -533,7 +539,7 @@ def _(Line2D, gas_to_color, np, plt):
         gas = pcs_and_exps['gas']
         ppm = pcs_and_exps['ppm']
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 5))
         ax.axhline(y=0, color='grey', zorder=0)
         ax.axvline(x=0, color='grey', zorder=0)
 
@@ -546,28 +552,28 @@ def _(Line2D, gas_to_color, np, plt):
         gas_legend_elements = []
         for gas_type, gas_label in gas_types:
             gas_mask = (gas == gas_type)
-            scatter = ax.scatter(pc1[gas_mask], pc2[gas_mask], s=ppm[gas_mask],
-                                edgecolors="black", linewidths=1.5, facecolors=gas_to_color[gas_type])
+            scatter = ax.scatter(pc1[gas_mask], pc2[gas_mask], s=6 * ppm[gas_mask],
+                                edgecolors="black", linewidths=1.5, facecolors=gas_to_color[gas_type], clip_on=False)
             gas_legend_elements.append(Line2D([0], [0], marker='o', color='w', label=gas_label,
-                                            markeredgecolor="black", markerfacecolor=gas_to_color[gas_type], markersize=10))
+                                            markeredgecolor="black", markerfacecolor=gas_to_color[gas_type], markersize=18))
 
         ppm_legend_elements = [Line2D([0], [0], marker='o', color='w', label=str(ppm_value)+" ppm",
-                                markerfacecolor='w', markeredgecolor='black', ms=np.sqrt(ppm_value)) for ppm_value in ppm_values]
+                                markerfacecolor='w', markeredgecolor='black', ms=2.5*np.sqrt(ppm_value)) for ppm_value in ppm_values]
 
         # set x and y axis labels and limits
-        ax.set_xlabel(f'PC1 score, z$_1$ [{round(z1*100, 1)}%]')
-        ax.set_ylabel(f'PC2 score, z$_2$ [{round(z2*100, 1)}%]')
+        ax.set_xlabel(f'PC1 score [{round(z1*100, 1)}%]')
+        ax.set_ylabel(f'PC2 score [{round(z2*100, 1)}%]')
         ax.grid(False)
 
         # create the legends
-        gas_legend = ax.legend(handles=gas_legend_elements, title=None, loc=(1.0,.3), frameon=False)
-        ppm_legend = ax.legend(handles=ppm_legend_elements, title=None, loc=(-0.05,-0.4),
-                            ncol=len(ppm_values), frameon=False)
+        gas_legend = ax.legend(handles=gas_legend_elements, title=None, loc=(1.0,.1), frameon=False)
+        ppm_legend = ax.legend(handles=ppm_legend_elements, title=None, loc=(-0.2,-0.4),
+                            ncol=5, frameon=False)
 
         ax.add_artist(gas_legend)
         # ax.add_artist(ppm_legend)
-        plt.axis('scaled')
-        plt.tight_layout()
+        ax.set_aspect('equal', "box")
+        # plt.tight_layout()
 
         # Adjust the layout
         plt.savefig(savename, bbox_extra_artists=(gas_legend, ppm_legend), bbox_inches='tight') 
@@ -577,7 +583,7 @@ def _(Line2D, gas_to_color, np, plt):
 
 @app.cell
 def _(pcs_and_exps, plot_PCA, plt, z1, z2):
-    with plt.rc_context({'font.size': 10}):
+    with plt.rc_context({'font.size': 20}):
         plot_PCA(pcs_and_exps, z1, z2)
     return
 

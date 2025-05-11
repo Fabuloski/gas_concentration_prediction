@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.10.15"
+__generated_with = "0.13.6"
 app = marimo.App(width="medium")
 
 
@@ -32,21 +32,16 @@ def _():
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     return (
         Line2D,
-        LinearRegression,
         LinearSegmentedColormap,
         PCA,
         Path,
         PowerTransformer,
         RandomForestClassifier,
-        auc,
         confusion_matrix,
         make_axes_locatable,
-        mean_squared_error,
         np,
-        path_effects,
         pd,
         plt,
-        r2_score,
         sns,
     )
 
@@ -54,7 +49,7 @@ def _():
 @app.cell
 def _():
     from utils import _find_ppm_sheet, linear_regression, SensorResponse, _find_header_row
-    return SensorResponse, linear_regression
+    return (SensorResponse,)
 
 
 @app.cell
@@ -206,15 +201,7 @@ def _(MOFs, SensorResponse, ppms, read_data, read_data_from_file):
                                     sensor_response.saturation, sensor_response.auc]) 
                     except (AttributeError, Exception):
                         pass
-    return (
-        MOF,
-        ppm,
-        raw_data,
-        rep_id,
-        sensor_response,
-        this_data,
-        this_title,
-    )
+    return (raw_data,)
 
 
 @app.cell
@@ -378,114 +365,6 @@ def _(PowerTransformer, combo_df, feature_col_names):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# create heatmap of sensor feature values""")
-    return
-
-
-@app.cell
-def _():
-    def gas_to_subscript(gas):
-        sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-        return gas.translate(sub)
-    return (gas_to_subscript,)
-
-
-@app.cell
-def _(
-    LinearSegmentedColormap,
-    feature_col_names,
-    features,
-    gas_to_subscript,
-    make_axes_locatable,
-    np,
-    plt,
-    sns,
-):
-    def plot_heatmap(transformed_combo_df):
-        heatmatrixdf = transformed_combo_df.sort_values(by=["H2S", "SO2"], ascending=False)
-
-        RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(28, 10), gridspec_kw={'height_ratios':[3, 1, 1]})
-
-        # font size
-        fs = 20
-        yticklabels = features * 3
-
-        # create heatmap
-        heat_matrix_plot = heatmatrixdf[feature_col_names].T
-        heat = sns.heatmap(heat_matrix_plot, cmap=RdGn, center=0, yticklabels=yticklabels, vmin=-2, vmax=2,
-                         square=True, ax=ax1, cbar=False)
-
-        # create a new axes for the colorbar
-        divider = make_axes_locatable(ax1)
-        cax = divider.append_axes("right", size="2%", pad=0.8)  # increase pad to move colorbar further right
-
-        # add colorbar to the new axes
-        cbar = fig.colorbar(heat.collections[0], cax=cax)
-
-        # adjust colorbar ticks
-        cbar.ax.tick_params(labelsize=fs)
-        cbar.set_ticks([-2, -1, 0, 1, 2])
-
-        # add colorbar label
-        cbar.set_label(label='transformed response', size=fs)
-
-        # label the MOFs:
-        ax1.annotate('Cu', xy=(1.01, 7.5/9), xycoords='axes fraction',
-                    fontsize=fs, ha='left', va='center',
-                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.55, lengthA=1, angleA=180', lw=2, color='k'))
-
-        ax1.annotate('Ni', xy=(1.01, 4.5/9), xycoords='axes fraction',
-                    fontsize=fs, ha='left', va='center',
-                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.55, lengthA=1, angleA=180', lw=2, color='k'))
-
-        ax1.annotate('Zn', xy=(1.01, 1.5/9), xycoords='axes fraction',
-                    fontsize=fs, ha='left', va='center',
-                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
-                    arrowprops=dict(arrowstyle=']- ,widthA=1.55, lengthA=1, angleA=180', lw=2, color='k'))
-
-        ax1.set_xticks([])
-        ax1.set_yticks(ax1.get_yticks())
-        ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=fs)
-
-        # create scatter ppm plot
-        for (ax, gas) in zip((ax2, ax3), ("H2S", "SO2")):
-            ax.scatter(x=np.arange(0, len(heatmatrixdf)), y=heatmatrixdf[gas], s=180, clip_on=False)
-            ax.set_xlim(ax1.get_xlim())
-            ax.set_ylabel(f"{gas_to_subscript(gas)} [ppm]", fontsize=fs)
-            ax.tick_params(axis='both', which='both', labelsize=fs)
-            ax.set_xticks(ticks=np.arange(0, len(heatmatrixdf)), labels=[])
-
-            # adjust the position of ax2 to align with ax1
-            pos1 = ax1.get_position()
-            pos2 = ax.get_position()
-            ax.set_position([pos1.x0, pos2.y0, pos1.width - 0.035, pos2.height])
-
-
-            # make ppm plot nice
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.set_xlim(left=-0.22)
-            ax.set_ylim(top=40, bottom=-0.1)
-
-            ax.grid(axis='x', color='grey')
-            ax.set_yticks(ticks=[40, 20, 0])
-        plt.savefig("heatmap.pdf", bbox_inches='tight', pad_inches=0.5)
-        return plt.show()
-    return (plot_heatmap,)
-
-
-@app.cell
-def _(plot_heatmap, transformed_combo_df):
-    plot_heatmap(transformed_combo_df)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
     mo.md(r"""# Experiment design space""")
     return
 
@@ -525,8 +404,29 @@ def _(combo_df):
 
 
 @app.cell
-def _(Line2D, UQ_region, combo_df, pca_combo_df, plt, target_to_color):
+def _():
+    rf_class_to_pretty_name = {
+        "++": "H$_2$S$\u26A0$ & SO$_2\u26A0$",
+        "-+": "H$_2$S$\u2713$ & SO$_2\u26A0$",
+        "--": "H$_2$S$\u2713$ & SO$_2\u2713$",
+        "+-": "H$_2$S$\u26A0$ & SO$_2\u2713$",
+    }
+    rf_class_to_pretty_name
+    return (rf_class_to_pretty_name,)
+
+
+@app.cell
+def _(
+    Line2D,
+    UQ_region,
+    combo_df,
+    pca_combo_df,
+    plt,
+    rf_class_to_pretty_name,
+    target_to_color,
+):
     facecolors = [target_to_color[target] for target in pca_combo_df["target"]]
+    fs = 14
 
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     ax.scatter(pca_combo_df["H2S"], pca_combo_df["SO2"], 
@@ -545,9 +445,13 @@ def _(Line2D, UQ_region, combo_df, pca_combo_df, plt, target_to_color):
     # region plots
     alpha = 0.1
     ax.fill_between([0, 20], 0, y2=20, color=(target_to_color["--"], alpha))
+    ax.text(10, 16, rf_class_to_pretty_name["--"], fontsize=fs, horizontalalignment="center", verticalalignment="center")
     ax.fill_between([0, 20], 20, y2=40, color=(target_to_color["-+"], alpha))
+    ax.text(10, 24, rf_class_to_pretty_name["-+"], fontsize=fs, horizontalalignment="center", verticalalignment="center")
     ax.fill_between([20, 40], 0, y2=20, color=(target_to_color["+-"], alpha))
+    ax.text(30, 16, rf_class_to_pretty_name["+-"], fontsize=fs, horizontalalignment="center", verticalalignment="center")
     ax.fill_between([20, 40], 20, y2=40, color=(target_to_color["++"], alpha))
+    ax.text(30, 24, rf_class_to_pretty_name["++"], fontsize=fs, horizontalalignment="center", verticalalignment="center")
 
     plt.plot([20, 20], [0, 40], color="black", lw=1, linestyle="dashed")
     plt.plot([0, 40], [20, 20], color="black", lw=1, linestyle="dashed")
@@ -557,10 +461,119 @@ def _(Line2D, UQ_region, combo_df, pca_combo_df, plt, target_to_color):
     ax.set_xlim(0, 40)
     ax.set_ylim(0, 40)
     ax.set_aspect('equal', "box")
-    ax.legend(handles=legend_elements, fontsize=14)
+    ax.legend(handles=legend_elements, fontsize=14, loc=(0.55, 0.82))
+    plt.tight_layout()
     plt.savefig("experiment_space.pdf")
     plt.show()
-    return alpha, ax, facecolors, fig, legend_elements
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""# create heatmap of sensor feature values""")
+    return
+
+
+@app.function
+def gas_to_subscript(gas):
+    sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+    return gas.translate(sub)
+
+
+@app.cell
+def _(
+    LinearSegmentedColormap,
+    feature_col_names,
+    features,
+    make_axes_locatable,
+    np,
+    plt,
+    sns,
+):
+    def plot_heatmap(pca_combo_df):
+        heatmatrixdf = pca_combo_df.sort_values(by=["H2S", "SO2"], ascending=False)
+
+        RdGn = cmap = LinearSegmentedColormap.from_list("mycmap", ["red", "white", "green"])
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(28, 10), gridspec_kw={'height_ratios':[3, 1, 1]})
+
+        # font size
+        fs = 30
+        yticklabels = features * 3
+
+        # create heatmap
+        heat_matrix_plot = heatmatrixdf[feature_col_names].T
+        heat = sns.heatmap(heat_matrix_plot, cmap=RdGn, center=0, yticklabels=yticklabels, vmin=-2, vmax=2,
+                         square=True, ax=ax1, cbar=False)
+
+        # create a new axes for the colorbar
+        divider = make_axes_locatable(ax1)
+        cax = divider.append_axes("right", size="2%", pad=0.8)  # increase pad to move colorbar further right
+
+        # add colorbar to the new axes
+        cbar = fig.colorbar(heat.collections[0], cax=cax)
+
+        # adjust colorbar ticks
+        cbar.ax.tick_params(labelsize=fs)
+        cbar.set_ticks([-2, -1, 0, 1, 2])
+
+        # add colorbar label
+        cbar.set_label(label='transformed\nresponse', size=fs)
+
+        # label the MOFs:
+        ax1.annotate('Cu', xy=(1.01, 7.5/9), xycoords='axes fraction',
+                    fontsize=fs, ha='left', va='center',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.15, lengthA=1, angleA=180', lw=2, color='k'))
+
+        ax1.annotate('Ni', xy=(1.01, 4.5/9), xycoords='axes fraction',
+                    fontsize=fs, ha='left', va='center',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.15, lengthA=1, angleA=180', lw=2, color='k'))
+
+        ax1.annotate('Zn', xy=(1.01, 1.5/9), xycoords='axes fraction',
+                    fontsize=fs, ha='left', va='center',
+                    bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
+                    arrowprops=dict(arrowstyle=']- ,widthA=1.15, lengthA=1, angleA=180', lw=2, color='k'))
+
+        ax1.set_xticks([])
+        ax1.set_yticks(ax1.get_yticks())
+        ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=fs)
+
+        # create scatter ppm plot
+        gas_to_color = {"SO2" : "orange", "H2S" : "yellow"}
+        for (ax, gas) in zip((ax2, ax3), ("SO2", "H2S")):
+            ax.scatter(x=np.arange(0, len(heatmatrixdf)), y=heatmatrixdf[gas], s=180, color=gas_to_color[gas], 
+                       edgecolor="black", clip_on=False)
+            ax.set_xlim(ax1.get_xlim())
+            ax.set_ylabel(f"{gas_to_subscript(gas)}\n[ppm]", fontsize=fs)
+            ax.tick_params(axis='both', which='both', labelsize=fs)
+            ax.set_xticks(ticks=np.arange(0, len(heatmatrixdf)), labels=[])
+
+            # adjust the position of ax2 to align with ax1
+            pos1 = ax1.get_position()
+            pos2 = ax.get_position()
+            ax.set_position([pos1.x0, pos2.y0, pos1.width - 0.035, pos2.height])
+
+
+            # make ppm plot nice
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.set_xlim(left=-0.22)
+            ax.set_ylim(top=50, bottom=-0.1)
+
+            ax.grid(axis='x', color='grey')
+            ax.set_yticks(ticks=[40, 20, 0])
+        plt.savefig("heatmap.pdf", bbox_inches='tight', pad_inches=0.5)
+        return plt.show()
+    return (plot_heatmap,)
+
+
+@app.cell
+def _(pca_combo_df, plot_heatmap, plt):
+    with plt.rc_context({'font.size': 38}):
+        plot_heatmap(pca_combo_df)
+    return
 
 
 @app.cell(hide_code=True)
@@ -579,20 +592,18 @@ def _(PCA, feature_col_names, pca_combo_df, pd):
     print(z1, z2)
 
     pcs = pd.DataFrame(data=latent_vectors, columns=['PC1', 'PC2'])
-    pcs_and_exps = pd.concat([pca_combo_df, pcs], axis=1) # add principal components to f
+    pcs_and_exps = pd.concat([pca_combo_df, pcs], axis=1)
     pcs_and_exps
-    return latent_vectors, pca, pcadata, pcs, pcs_and_exps, z1, z2
+    return pcs_and_exps, z1, z2
 
 
 @app.cell
-def _(Line2D, plt, target_to_color, target_to_shape):
-    def plot_PCA(pcs_and_exps, z1, z2, savename="PCA.pdf"):
+def _(Line2D, plt, rf_class_to_pretty_name, target_to_color, target_to_shape):
+    def plot_PCA(pcs_and_exps, z1, z2, savename="PCA.pdf", rf_class_to_pretty_name=rf_class_to_pretty_name):
         pc1 = pcs_and_exps['PC1']
         pc2 = pcs_and_exps['PC2']
 
         mixture_types = pcs_and_exps['target']
-        unique_mixture = (("--", "H$_2$S$^-$, SO$_2$$^-$"), ("+-", "H$_2$S$^+$, SO$_2$$^-$"), 
-                              ("-+", "H$_2$S$^-$, SO$_2$$^+$"), ("++", "H$_2$S$^+$, SO$_2$$^+$"))
 
         fig, ax = plt.subplots()
         ax.axhline(y=0, color='grey', zorder=0)
@@ -600,32 +611,31 @@ def _(Line2D, plt, target_to_color, target_to_shape):
 
         # create the bubble plot and legend handles
         mixture_legend_elements = []
-        for mixture_type, label in unique_mixture:
-            mixture_mask = (mixture_types == mixture_type)    
-            scatter = ax.scatter(pc1[mixture_mask], pc2[mixture_mask], s=100,
-                                edgecolors=target_to_color[mixture_type], marker=target_to_shape[mixture_type], 
-                                 linewidths=1.5, facecolors='none')
+        for mixture_type in ["--", "+-", "-+", "++"]:
+            label = rf_class_to_pretty_name[mixture_type]
+            mixture_mask = (mixture_types == mixture_type)
+            marker_size = pcs_and_exps.loc[mixture_mask, "H2S"] + pcs_and_exps.loc[mixture_mask, "SO2"]
+            scatter = ax.scatter(pc1[mixture_mask], pc2[mixture_mask], s= 4 * marker_size,
+                                 edgecolors=target_to_color[mixture_type], 
+                                 marker=target_to_shape[mixture_type], linewidths=1.5, facecolors='none')
             mixture_legend_elements.append(Line2D([0], [0], marker=target_to_shape[mixture_type], color='w', label=label,
                                             markeredgecolor=target_to_color[mixture_type], markerfacecolor='none', markersize=10))
 
         # set x and y axis labels and limits
-        ax.set_xlabel(f'PC1 score, z$_1$ [{round(z1*100, 1)}%]')
-        ax.set_ylabel(f'PC2 score, z$_2$ [{round(z2*100, 1)}%]')
-        # ax.tick_params(axis="both", labelsize=15)
+        ax.set_xlabel(f'PC1 score [{round(z1*100, 1)}%]')
+        ax.set_ylabel(f'PC2 score [{round(z2*100, 1)}%]')
+        ax.set_aspect('equal', "box")
         ax.grid(False)
 
         # create the legends
-        mixture_legend = ax.legend(handles=mixture_legend_elements, title=None, loc=(1.04,.5), frameon=False)
+        mixture_legend = ax.legend(handles=mixture_legend_elements, title=None, loc=(.65,.01), frameon=True, fontsize=12)
 
         ax.add_artist(mixture_legend)
-        plt.axis('scaled')
-
         plt.tight_layout()
 
         # Adjust the layout
         plt.savefig(savename, bbox_extra_artists=(mixture_legend, ), bbox_inches='tight')
-
-        plt.show()
+        return plt.show()
     return (plot_PCA,)
 
 
@@ -686,25 +696,7 @@ def _(loo_classification, rf_df):
 
 
 @app.cell
-def _():
-    rf_class_to_pretty_name = {
-        "++": "H$_2$S$^+,$ SO$_2^+$",
-        "-+": "H$_2$S$^-,$ SO$_2^+$",
-        "--": "H$_2$S$^-,$ SO$_2^-$",
-        "+-": "H$_2$S$^+,$ SO$_2^-$",
-    }
-    rf_class_to_pretty_name
-    return (rf_class_to_pretty_name,)
-
-
-@app.cell
-def _(
-    confusion_matrix,
-    parity_data,
-    pd,
-    rf_class_to_pretty_name,
-    rf_classes,
-):
+def _(confusion_matrix, parity_data, pd, rf_class_to_pretty_name, rf_classes):
     cm = pd.DataFrame(
         confusion_matrix(parity_data["true"], parity_data["pred"], labels=rf_classes), 
         columns=[rf_class_to_pretty_name[c] for c in rf_classes]
@@ -720,10 +712,17 @@ def _(cm):
 
 
 @app.cell
+def _(my_colors):
+    my_colors
+    return
+
+
+@app.cell
 def _(cm, plt, sns):
     with plt.rc_context({'font.size': 14}):
         sns.heatmap(
-            cm, annot=True, fmt='d', cmap='Blues', 
+            cm, annot=True, fmt='d', cmap='Grays', 
+            annot_kws ={"fontsize":19},
             cbar_kws={"label":"# experiments"},
             square=True
         )
@@ -774,6 +773,7 @@ def _(features, mof_to_pretty_name, np, pd, plt, sns):
         fig, ax = plt.subplots(1, 1)
         sns.barplot(MOF_importance, x="MOF", y="importance score", edgecolor="black", facecolor="white")
         ax.set_ylim(0, 1)
+        plt.tight_layout()
         plt.savefig("sensor_importance.pdf")
         return plt.show()
     return (plot_MOF_importance,)
@@ -806,7 +806,7 @@ def _(UQ_region, clf, combo_df, feature_col_names, np):
         UQ_pred.append(pred)
     UQ_pred = np.vstack(UQ_pred)
     UQ_pred
-    return UQ_pred, estimator, pred
+    return (UQ_pred,)
 
 
 @app.cell
@@ -819,7 +819,7 @@ def _(UQ_pred, UQ_region, np):
         counts[classes.astype(int)] = count
         class_dist[j] = counts
     class_dist = class_dist / UQ_pred.shape[0] * 100 # covert to percentage
-    return class_dist, classes, count, counts, j
+    return (class_dist,)
 
 
 @app.cell
@@ -840,17 +840,12 @@ def _(UQ_classification, class_dist, clf):
 def _(mo):
     mo.md(
         r"""
-        notes: 
+    notes: 
 
-        * for 20 ppm SO2, we'd expect some miss-classification as -+ and --. since def H2S is not there. but we do get some sizeable +- predictions...
-        * for 20 ppm H2S, we'd expect some miss-classification as +- and --. since def SO2 is not there. this is largely indeed the case!
-        """
+    * for 20 ppm SO2, we'd expect some miss-classification as -+ and --. since def H2S is not there. but we do get some sizeable +- predictions...
+    * for 20 ppm H2S, we'd expect some miss-classification as +- and --. since def SO2 is not there. this is largely indeed the case!
+    """
     )
-    return
-
-
-@app.cell
-def _():
     return
 
 
