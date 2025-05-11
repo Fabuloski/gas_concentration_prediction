@@ -1,6 +1,6 @@
-# Metal−Organic Framework-Based Chemiresistive Array for the Detection and Differentiation of Toxic Gases
+# Metal−Organic Framework-Based Chemiresistive Array Paired With Machine Learning Algorithms for the Detection and Differentiation of Toxic Gases
 :rocket: This repo contains data and code to reproduce the results for:
-> Georganna Benedetto, Patrick Damacet, Elissa O. Shehayeb, Gbenga Fabusola, Cory M. Simon, and Katherine A. Mirica, "Metal−Organic Framework-Based Chemiresistive Array for the Detection and Differentiation of Toxic Gases"
+> Georganna Benedetto, Patrick Damacet, Elissa O. Shehayeb, Gbenga Fabusola, Cory M. Simon, and Katherine A. Mirica, "Metal−Organic Framework-Based Chemiresistive Array Paired With Machine Learning Algorithms for the Detection and Differentiation of Toxic Gases"
 
 We describe the sequence of steps we took to make our paper reproducible. The output of each step is saved as a file, you can start at any step.
 
