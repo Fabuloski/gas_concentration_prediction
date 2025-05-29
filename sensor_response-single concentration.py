@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.10.15"
+__generated_with = "0.13.13"
 app = marimo.App(width="medium")
 
 
@@ -32,21 +32,14 @@ def _():
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     return (
         Line2D,
-        LinearRegression,
         LinearSegmentedColormap,
         PCA,
         Path,
         PowerTransformer,
-        RandomForestClassifier,
-        auc,
-        confusion_matrix,
         make_axes_locatable,
-        mean_squared_error,
         np,
-        path_effects,
         pd,
         plt,
-        r2_score,
         sns,
     )
 
@@ -54,14 +47,14 @@ def _():
 @app.cell
 def _():
     from utils import _find_ppm_sheet, linear_regression, SensorResponse, _find_header_row
-    return SensorResponse, linear_regression
+    return (SensorResponse,)
 
 
 @app.cell
 def _(plt):
     my_colors = plt.get_cmap('tab10')
     my_colors
-    return (my_colors,)
+    return
 
 
 @app.cell
@@ -205,16 +198,7 @@ def _(MOFs, SensorResponse, gases, ppms, read_data, read_data_from_file):
 
                     except (AttributeError, Exception):
                         pass
-    return (
-        MOF,
-        gas,
-        ppm,
-        raw_data,
-        rep_id,
-        sensor_response,
-        this_data,
-        this_title,
-    )
+    return (raw_data,)
 
 
 @app.cell
@@ -433,12 +417,12 @@ def _(
                     fontsize=fs, ha='center', va='bottom', 
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
                     arrowprops=dict(arrowstyle='-[, widthB=4.15, lengthB=.5', lw=2, color='k'))
-        
+
         ax1.annotate('NH$_3$', color='black', xy=((15 + 9.5)/89, 1.08), xycoords='axes fraction',
                     fontsize=fs, ha='center', va='bottom',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
                     arrowprops=dict(arrowstyle='-[, widthB=5.2, lengthB=.5', lw=2, color='k'))
-        
+
         ax1.annotate('SO$_2$', color='black', xy=((34 + 9.5)/89, 1.08), xycoords='axes fraction',
                     fontsize=fs, ha='center', va='bottom',
                     bbox=dict(boxstyle='square', ec='white', fc='white', color='k'),
@@ -528,7 +512,7 @@ def _(PCA, combo_df, feature_col_names, pd, transformed_combo_df):
 
     pcs = pd.DataFrame(data=latent_vectors, columns = ['PC1', 'PC2'])
     pcs_and_exps = pd.concat([combo_df, pcs], axis = 1)
-    return latent_vectors, pca, pcadata, pcs, pcs_and_exps, z1, z2
+    return pcs_and_exps, z1, z2
 
 
 @app.cell
@@ -543,8 +527,8 @@ def _(Line2D, gas_to_color, np, plt):
         ax.axhline(y=0, color='grey', zorder=0)
         ax.axvline(x=0, color='grey', zorder=0)
 
-        gas_types = [('CO','CO'), ('H2S','H$_2$S'), ('NH3','NH$_3$'), 
-                     ('NO','NO'), ('SO2', 'SO$_2$')] # gas label for accessing data and gas label for legend
+        gas_types = [('CO','CO'), ('NH3','NH$_3$'), ('SO2', 'SO$_2$'), 
+                     ('H2S','H$_2$S'), ('NO','NO')] # gas label for accessing data and gas label for legend
         ppm_values = pcs_and_exps['ppm'].unique()
         ppm_values.sort()
 

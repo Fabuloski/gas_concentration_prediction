@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.13.6"
+__generated_with = "0.13.13"
 app = marimo.App(width="medium")
 
 
@@ -543,11 +543,11 @@ def _(
         gas_to_color = {"SO2" : "orange", "H2S" : "yellow"}
         for (ax, gas) in zip((ax2, ax3), ("SO2", "H2S")):
             ax.scatter(x=np.arange(0, len(heatmatrixdf)), y=heatmatrixdf[gas], s=180, color=gas_to_color[gas], 
-                       edgecolor="black", clip_on=False)
+                       edgecolor="black", clip_on=False, zorder=3)
             ax.set_xlim(ax1.get_xlim())
             ax.set_ylabel(f"{gas_to_subscript(gas)}\n[ppm]", fontsize=fs)
             ax.tick_params(axis='both', which='both', labelsize=fs)
-            ax.set_xticks(ticks=np.arange(0, len(heatmatrixdf)), labels=[])
+            ax.set_xticks(ticks=np.arange(0, len(heatmatrixdf)), labels=[], zorder=0)
 
             # adjust the position of ax2 to align with ax1
             pos1 = ax1.get_position()
@@ -611,7 +611,7 @@ def _(Line2D, plt, rf_class_to_pretty_name, target_to_color, target_to_shape):
 
         # create the bubble plot and legend handles
         mixture_legend_elements = []
-        for mixture_type in ["--", "+-", "-+", "++"]:
+        for mixture_type in ["++", "+-", "-+", "--"]:
             label = rf_class_to_pretty_name[mixture_type]
             mixture_mask = (mixture_types == mixture_type)
             marker_size = pcs_and_exps.loc[mixture_mask, "H2S"] + pcs_and_exps.loc[mixture_mask, "SO2"]
@@ -708,12 +708,6 @@ def _(confusion_matrix, parity_data, pd, rf_class_to_pretty_name, rf_classes):
 @app.cell
 def _(cm):
     cm
-    return
-
-
-@app.cell
-def _(my_colors):
-    my_colors
     return
 
 
