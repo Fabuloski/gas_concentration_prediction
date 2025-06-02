@@ -406,10 +406,10 @@ def _(combo_df):
 @app.cell
 def _():
     rf_class_to_pretty_name = {
-        "++": "H$_2$S$\u26A0$ & SO$_2\u26A0$",
-        "-+": "H$_2$S$\u2713$ & SO$_2\u26A0$",
-        "--": "H$_2$S$\u2713$ & SO$_2\u2713$",
-        "+-": "H$_2$S$\u26A0$ & SO$_2\u2713$",
+        "++": "SO$_2\u26A0$ & H$_2$S$\u26A0$",
+        "-+": "SO$_2\u26A0$ & H$_2$S$\u2713$",
+        "--": "SO$_2\u2713$ & H$_2$S$\u2713$",
+        "+-": "SO$_2\u2713$ & H$_2$S$\u26A0$",
     }
     rf_class_to_pretty_name
     return (rf_class_to_pretty_name,)
