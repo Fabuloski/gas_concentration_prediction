@@ -483,10 +483,17 @@ def gas_to_subscript(gas):
 
 
 @app.cell
+def _():
+    gas_to_color = {"SO2" : "orange", "H2S" : "yellow"}
+    return (gas_to_color,)
+
+
+@app.cell
 def _(
     LinearSegmentedColormap,
     feature_col_names,
     features,
+    gas_to_color,
     make_axes_locatable,
     np,
     plt,
@@ -542,7 +549,6 @@ def _(
         ax1.set_yticklabels(ax1.get_yticklabels(), rotation=0, fontsize=fs)
 
         # create scatter ppm plot
-        gas_to_color = {"SO2" : "orange", "H2S" : "yellow"}
         for (ax, gas) in zip((ax2, ax3), ("SO2", "H2S")):
             ax.scatter(x=np.arange(0, len(heatmatrixdf)), y=heatmatrixdf[gas], s=180, color=gas_to_color[gas], 
                        edgecolor="black", clip_on=False, zorder=3)
@@ -793,6 +799,12 @@ def _(mo):
 
 
 @app.cell
+def _(features):
+    features
+    return
+
+
+@app.cell
 def _(MOFs, np, pd, plt, sns):
     def plot_feature_importance(features_importance, features, MOFs=MOFs):
         feature_importance = np.zeros(len(features))
@@ -802,7 +814,7 @@ def _(MOFs, np, pd, plt, sns):
 
         feature_importance = pd.DataFrame(
             {"importance score" : feature_importance, 
-            "feature" : features}
+            "feature" : ["AUC", "slope", "saturation"]}
         )
         feature_importance.sort_values(by="importance score", inplace=True, ascending=False)
 
@@ -878,34 +890,34 @@ def _(np):
 
 
 @app.cell
-def _(MAE, np, plt, r2_score, sns):
+def _(MAE, gas_to_color, np, plt, r2_score, sns):
     def viz_gas_concentration_prediction(reg_parity):
-        fig, axs = plt.subplots(1, 2, figsize=(10, 10), sharey=True)
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
         for i, gas in enumerate(['SO2', 'H2S']):
             true, pred = np.vstack(reg_parity["true"])[:, i], np.vstack(reg_parity["pred"])[:, i]
             r2 = r2_score(true, pred)
 
             clip = max(max(true), max(pred))
             axs[i].plot([0.0, clip + 1], [0.0, clip + 1], linestyle="dashed", color="grey")
-            sns.scatterplot(x=true, y=pred, s=100, ax=axs[i], zorder=1, clip_on=False)
+            sns.scatterplot(x=true, y=pred, s=100, ax=axs[i], zorder=1, clip_on=False, color=gas_to_color[gas], edgecolor="black")
 
             axs[i].set_xlim(0, clip + 1), 
             axs[i].set_ylim(0, clip + 1)
             axs[i].set_aspect('equal', "box")
 
+            ticks = np.arange(0, round(clip + 1), 5)
+            axs[i].set_yticks(ticks)
+            axs[i].set_xticks(ticks)
 
-            axs[i].set_yticks([0, round(clip / 2), round(clip - 1)])
-            axs[i].set_xticks([0, round(clip / 2), round(clip - 1)])
 
-
-            axs[i].set_ylabel("pred. conc [ppm]")
-            axs[i].set_xlabel("true conc [ppm]")
+            axs[i].set_ylabel("pred. concentration [ppm]")
+            axs[i].set_xlabel("true concentration [ppm]")
             axs[i].set_title(gas_to_subscript(gas))
 
 
             textstr = "\n".join(
                 (  
-                    "MAE = %.2f" % MAE(true, pred),
+                    "MAE = %.2fppm" % MAE(true, pred),
                     r"R$^2=%.2f$" % r2,
                 )
             )
