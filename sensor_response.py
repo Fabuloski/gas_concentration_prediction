@@ -26,7 +26,7 @@ def _():
     from sklearn.preprocessing import PowerTransformer
     from sklearn.linear_model import LinearRegression
     from sklearn.metrics import mean_squared_error, r2_score, auc, confusion_matrix
-    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
     from sklearn.decomposition import PCA
 
     from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -37,11 +37,13 @@ def _():
         Path,
         PowerTransformer,
         RandomForestClassifier,
+        RandomForestRegressor,
         confusion_matrix,
         make_axes_locatable,
         np,
         pd,
         plt,
+        r2_score,
         sns,
     )
 
@@ -465,7 +467,7 @@ def _(
     plt.tight_layout()
     plt.savefig("experiment_space.pdf")
     plt.show()
-    return
+    return (ax,)
 
 
 @app.cell(hide_code=True)
@@ -658,12 +660,18 @@ def _(combo_df, get_classification_data):
 
 
 @app.cell
-def _(RandomForestClassifier, feature_col_names, np):
+def _(rf_df):
+    rf_df
+    return
+
+
+@app.cell
+def _(RandomForestClassifier, clf, feature_col_names, np):
     def loo_classification(rf_df):
         parity_data = {"true" : [], "pred" : []}
         features_importance = np.zeros(len(feature_col_names))
         # loop over (H2S, SO2) concentrations
-        for (H2S_ppm, SO2_ppm) in np.unique(rf_df[['H2S', 'SO2']].values, axis=0):
+        for (SO2_ppm, H2S_ppm) in np.unique(rf_df[['SO2', 'H2S']].values, axis=0):
             # multiple replicates may be in test set.
             test_ids = (rf_df["H2S"] == H2S_ppm) & (rf_df["SO2"] == SO2_ppm)
             train_ids = ~test_ids
@@ -671,21 +679,20 @@ def _(RandomForestClassifier, feature_col_names, np):
             X_train = rf_df.loc[train_ids, feature_col_names]
             X_test = rf_df.loc[test_ids, feature_col_names]
 
+            model = RandomForestClassifier(n_estimators=500, random_state=0)
             y_train = rf_df.loc[train_ids, "target"]
             y_test = rf_df.loc[test_ids, "target"]
 
-
-            clf = RandomForestClassifier(n_estimators=500, random_state=0)
-            clf.fit(X_train, y_train)
-            y_pred = clf.predict(X_test)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
 
             # track (y_true, y_pred) parity plot
             parity_data["true"].extend(y_test)
             parity_data["pred"].extend(y_pred)
 
-            features_importance += clf.feature_importances_
+            features_importance += model.feature_importances_
 
-        return parity_data, features_importance / len(np.unique(rf_df[['H2S', 'SO2']].values, axis=0)), clf.classes_
+        return parity_data, features_importance / len(np.unique(rf_df[['SO2', 'H2S']].values, axis=0)), clf.classes_
     return (loo_classification,)
 
 
@@ -776,6 +783,152 @@ def _(features, mof_to_pretty_name, np, pd, plt, sns):
 @app.cell
 def _(MOFs, features_importance, plot_MOF_importance):
     plot_MOF_importance(features_importance, MOFs)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""# feature importance""")
+    return
+
+
+@app.cell
+def _(MOFs, np, pd, plt, sns):
+    def plot_feature_importance(features_importance, features, MOFs=MOFs):
+        feature_importance = np.zeros(len(features))
+        for (j, score) in enumerate(features_importance):
+            idx = j % len(MOFs)
+            feature_importance[idx] += score
+
+        feature_importance = pd.DataFrame(
+            {"importance score" : feature_importance, 
+            "feature" : features}
+        )
+        feature_importance.sort_values(by="importance score", inplace=True, ascending=False)
+
+        fig, ax = plt.subplots(1, 1)
+        sns.barplot(feature_importance, x="feature", y="importance score", edgecolor="black", facecolor="white")
+        ax.set_ylim(0, 1)
+        plt.tight_layout()
+        plt.savefig("feature_importance.pdf")
+        return plt.show()
+    return (plot_feature_importance,)
+
+
+@app.cell
+def _(features, features_importance, plot_feature_importance):
+    plot_feature_importance(features_importance, features)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""# prediction of mixture concentration""")
+    return
+
+
+@app.cell
+def _():
+    convex_hull = [[40, 0], [40, 40], [5, 0], [0, 5], [0, 40]] # to combat random forest extrapolation deficiency
+    return (convex_hull,)
+
+
+@app.cell
+def _(RandomForestRegressor, convex_hull, feature_col_names, np):
+    def loo_regression(combo_df, convex_hull=convex_hull):
+        parity_data = {"true" : [], "pred" : []}
+        # loop over (H2S, SO2) concentrations
+        for (SO2_ppm, H2S_ppm) in np.unique(combo_df[['SO2', 'H2S']].values, axis=0):
+            if [SO2_ppm, H2S_ppm] in convex_hull:
+                continue
+            # multiple replicates may be in test set.
+            test_ids = (combo_df["H2S"] == H2S_ppm) & (combo_df["SO2"] == SO2_ppm)
+            train_ids = ~test_ids
+
+            X_train = combo_df.loc[train_ids, feature_col_names]
+            X_test = combo_df.loc[test_ids, feature_col_names]
+
+            model = RandomForestRegressor(n_estimators=500, random_state=0)
+            y_train = combo_df.loc[train_ids, ['SO2', 'H2S']]
+            y_test = combo_df.loc[test_ids, ['SO2', 'H2S']].values
+
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+
+            # track (y_true, y_pred) parity plot
+            parity_data["true"].extend(y_test)
+            parity_data["pred"].extend(y_pred)
+
+        return parity_data
+    return (loo_regression,)
+
+
+@app.cell
+def _(combo_df, loo_regression):
+    reg_parity = loo_regression(combo_df)
+    return (reg_parity,)
+
+
+@app.cell
+def _(np):
+    def MAE(true, pred):
+        diff = abs(true - pred)
+        return np.mean(diff)
+    return (MAE,)
+
+
+@app.cell
+def _(MAE, ax, np, plt, r2_score, sns):
+    def viz_gas_concentration_prediction(reg_parity):
+        fig, axs = plt.subplots(1, 2, figsize=(10, 10), sharey=True)
+        for i, gas in enumerate(['SO2', 'H2S']):
+            true, pred = np.vstack(reg_parity["true"])[:, i], np.vstack(reg_parity["pred"])[:, i]
+            r2 = r2_score(true, pred)
+
+            clip = max(max(true), max(pred))
+            axs[i].plot([0.0, clip + 1], [0.0, clip + 1], linestyle="dashed", color="grey")
+            sns.scatterplot(x=true, y=pred, s=100, ax=axs[i], zorder=1, clip_on=False)
+
+            axs[i].set_xlim(0, clip + 1), 
+            axs[i].set_ylim(0, clip + 1)
+            axs[i].set_aspect('equal', "box")
+
+
+            axs[i].set_yticks([0, round(clip / 2), round(clip - 1)])
+            axs[i].set_xticks([0, round(clip / 2), round(clip - 1)])
+
+
+            axs[i].set_ylabel("pred. conc [ppm]")
+            axs[i].set_xlabel("true conc [ppm]")
+            axs[i].set_title(gas_to_subscript(gas))
+
+
+            textstr = "\n".join(
+                (  
+                    "MAE = %.2f" % MAE(true, pred),
+                    r"R$^2=%.2f$" % r2,
+                )
+            )
+
+            props = dict(boxstyle="round", facecolor="white", alpha=0.3)
+
+            axs[i].text(
+                [-0.03, 1.15][i],
+                0.89,
+                textstr,
+                transform=ax.transAxes,
+                fontsize=12,
+                verticalalignment="top",
+                    bbox=props,
+                )
+        plt.savefig("gas_concentration_prediction.pdf")
+        return fig
+    return (viz_gas_concentration_prediction,)
+
+
+@app.cell
+def _(reg_parity, viz_gas_concentration_prediction):
+    viz_gas_concentration_prediction(reg_parity)
     return
 
 
