@@ -467,7 +467,7 @@ def _(
     plt.tight_layout()
     plt.savefig("experiment_space.pdf")
     plt.show()
-    return (ax,)
+    return
 
 
 @app.cell(hide_code=True)
@@ -878,7 +878,7 @@ def _(np):
 
 
 @app.cell
-def _(MAE, ax, np, plt, r2_score, sns):
+def _(MAE, np, plt, r2_score, sns):
     def viz_gas_concentration_prediction(reg_parity):
         fig, axs = plt.subplots(1, 2, figsize=(10, 10), sharey=True)
         for i, gas in enumerate(['SO2', 'H2S']):
@@ -913,10 +913,10 @@ def _(MAE, ax, np, plt, r2_score, sns):
             props = dict(boxstyle="round", facecolor="white", alpha=0.3)
 
             axs[i].text(
-                [-0.03, 1.15][i],
-                0.89,
+                0.04,
+                0.95,
                 textstr,
-                transform=ax.transAxes,
+                transform=axs[i].transAxes,
                 fontsize=12,
                 verticalalignment="top",
                     bbox=props,
