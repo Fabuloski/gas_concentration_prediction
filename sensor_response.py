@@ -365,6 +365,35 @@ def _(PowerTransformer, combo_df, feature_col_names):
     return (transformed_combo_df,)
 
 
+@app.cell
+def _():
+    # feature correlation plot
+    return
+
+
+@app.cell
+def _(MOFs, feature_col_names, features, pd, transformed_combo_df):
+    all_features_df = pd.DataFrame()
+    for i in range(len(MOFs)):
+        start = i * len(features)
+        end = start + len(features)
+    
+        sub_col = feature_col_names[start:end]
+        MOF_df = transformed_combo_df[sub_col]
+        MOF_df.columns = ["AUC", "slope", "saturation"]
+    
+        all_features_df = pd.concat([all_features_df, MOF_df])
+    return (all_features_df,)
+
+
+@app.cell
+def _(all_features_df, plt, sns):
+    sns.pairplot(all_features_df)
+    plt.savefig("feature_pairplot.pdf")
+    plt.show()
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""# Experiment design space""")
