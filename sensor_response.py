@@ -64,19 +64,24 @@ def _(plt):
 def _(plt):
     my_colors = plt.get_cmap('tab10')
     my_colors
-    return (my_colors,)
+    return
 
 
 @app.cell
-def _(my_colors):
+def _():
     target_to_shape = {"--" : "o",
                        "+-" : "s",
                        "-+" : "*",
                        "++" : "^"}
-    target_to_color = {"--" : my_colors(0),
-                       "+-" : my_colors(1),
-                       "-+" : my_colors(2),
-                       "++" : my_colors(4)}
+    # target_to_color = {"--" : my_colors(0),
+    #                    "+-" : my_colors(1),
+    #                    "-+" : my_colors(2),
+    #                    "++" : my_colors(4)}
+
+    target_to_color = {"--" : "green",
+                       "+-" : "black",
+                       "-+" : "magenta",
+                       "++" : "red"}
     return target_to_color, target_to_shape
 
 
@@ -377,11 +382,11 @@ def _(MOFs, feature_col_names, features, pd, transformed_combo_df):
     for i in range(len(MOFs)):
         start = i * len(features)
         end = start + len(features)
-    
+
         sub_col = feature_col_names[start:end]
         MOF_df = transformed_combo_df[sub_col]
         MOF_df.columns = ["AUC", "slope", "saturation"]
-    
+
         all_features_df = pd.concat([all_features_df, MOF_df])
     return (all_features_df,)
 
