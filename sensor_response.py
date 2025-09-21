@@ -73,10 +73,6 @@ def _():
                        "+-" : "s",
                        "-+" : "*",
                        "++" : "^"}
-    # target_to_color = {"--" : my_colors(0),
-    #                    "+-" : my_colors(1),
-    #                    "-+" : my_colors(2),
-    #                    "++" : my_colors(4)}
 
     target_to_color = {"--" : "green",
                        "+-" : "black",
@@ -370,7 +366,7 @@ def _(PowerTransformer, combo_df, feature_col_names):
     return (transformed_combo_df,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     # feature correlation plot
     return
@@ -442,10 +438,10 @@ def _(combo_df):
 @app.cell
 def _():
     rf_class_to_pretty_name = {
-        "++": "SO$_2\u26A0$ & H$_2$S$\u26A0$",
-        "-+": "SO$_2\u26A0$ & H$_2$S$\u2713$",
-        "--": "SO$_2\u2713$ & H$_2$S$\u2713$",
-        "+-": "SO$_2\u2713$ & H$_2$S$\u26A0$",
+        "++": "SO$_2\u2191$ & H$_2$S$\u2191$",
+        "-+": "SO$_2\u2191$ & H$_2$S$\u2193$",
+        "--": "SO$_2\u2193$ & H$_2$S$\u2193$",
+        "+-": "SO$_2\u2193$ & H$_2$S$\u2191$",
     }
     rf_class_to_pretty_name
     return (rf_class_to_pretty_name,)
